@@ -1,4 +1,6 @@
 .vscode/
+data/cleaned_datasets/
+
 output/
 
 # Byte-compiled / optimized / DLL files
