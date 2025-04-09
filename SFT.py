@@ -23,8 +23,8 @@ import wandb
 import argparse
 from typing import Dict, List, Optional, Tuple, Union
 
-# Import the preprocessing module
-from preprocess_codeforces import preprocess_codeforces_data
+# Import the new preprocessing module
+from preprocess_codeforces import preprocess_json_dataset
 
 # Set up logging
 logging.basicConfig(
@@ -34,11 +34,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class CodeForcesDataset(Dataset):
+class CodeDataset(Dataset):
     """
-    Custom dataset for Codeforces competitive programming problems.
+    Custom dataset for code generation tasks.
     
-    Handles loading and preprocessing of Codeforces problems 
+    This dataset handles loading and preprocessing of competitive programming problems 
     and their solutions for supervised fine-tuning.
     """
     
@@ -46,7 +46,7 @@ class CodeForcesDataset(Dataset):
         self, 
         data_path: str,
         tokenizer,
-        max_length: int = 1024,  # Reduced from 2048 to save memory
+        max_length: int = 1024,
         problem_prefix: str = "PROBLEM:\n",
         solution_prefix: str = "\nSOLUTION:\n",
         explanation_prefix: str = "\nEXPLANATION:\n",
@@ -56,7 +56,7 @@ class CodeForcesDataset(Dataset):
         Initialize the dataset.
         
         Args:
-            data_path: Path to the preprocessed JSON file containing the dataset
+            data_path: Path to the JSON file containing the dataset
             tokenizer: Tokenizer to use for encoding inputs
             max_length: Maximum sequence length
             problem_prefix: Prefix for problem statements
@@ -72,7 +72,7 @@ class CodeForcesDataset(Dataset):
         self.mode = mode
         
         # Load data from JSON file
-        with open(data_path, 'r') as f:
+        with open(data_path, 'r', encoding='utf-8') as f:
             self.data = json.load(f)
         
         logger.info(f"Loaded {len(self.data)} examples from {data_path} for {mode}")
@@ -148,14 +148,18 @@ def train(args):
     eval_path = os.path.join(args.processed_data_dir, "eval.json")
     
     if not (os.path.exists(train_path) and os.path.exists(eval_path)):
-        logger.info(f"Processed data not found. Preprocessing from {args.csv_path}")
-        train_path, eval_path = preprocess_codeforces_data(
-            args.csv_path,
+        logger.info(f"Processed data not found. Preprocessing from {args.json_path}")
+        train_path, eval_path = preprocess_json_dataset(
+            args.json_path,
             args.processed_data_dir,
             train_ratio=args.train_ratio,
             eval_ratio=args.eval_ratio,
             seed=args.seed
         )
+    
+    # Memory optimization: clear CUDA cache before loading model and tokenizer
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
@@ -168,11 +172,7 @@ def train(args):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
-    # Memory optimization: clear CUDA cache before loading model
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    
-    # Load model with 8-bit quantization if specified
+    # Load model with memory optimizations
     logger.info(f"Loading base model: {args.model_name}")
     model_kwargs = {
         "torch_dtype": torch.float16 if args.use_fp16 else torch.float32,
@@ -214,14 +214,14 @@ def train(args):
         model.print_trainable_parameters()
     
     # Prepare datasets
-    train_dataset = CodeForcesDataset(
+    train_dataset = CodeDataset(
         data_path=train_path,
         tokenizer=tokenizer,
         max_length=args.max_length,
         mode="train"
     )
     
-    eval_dataset = CodeForcesDataset(
+    eval_dataset = CodeDataset(
         data_path=eval_path,
         tokenizer=tokenizer,
         max_length=args.max_length,
@@ -258,7 +258,7 @@ def train(args):
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         # Memory optimization options
-        dataloader_num_workers=4,
+        dataloader_num_workers=args.num_workers,
         dataloader_pin_memory=True,
         torch_compile=args.torch_compile,  # PyTorch 2.0+ optimization
     )
@@ -300,30 +300,30 @@ def train(args):
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="DeepCodeRL: Supervised Fine-Tuning Phase for Codeforces Dataset")
+    parser = argparse.ArgumentParser(description="DeepCodeRL: Supervised Fine-Tuning Phase for JSON Dataset")
     
     # Data arguments
-    parser.add_argument("--csv_path", type=str, required=True, 
-                      help="Path to Codeforces CSV file")
-    parser.add_argument("--processed_data_dir", type=str, default="data/processed/", 
+    parser.add_argument("--json_path", type=str, required=True, 
+                      help="Path to JSON dataset file", default="data/processed_codeforces/filtered_solutions_py_decontaminated_Python3Code_all_solutions.json")
+    parser.add_argument("--processed_data_dir", type=str, default="data/processed_json/", 
                       help="Directory to save processed data")
-    parser.add_argument("--train_ratio", type=float, default=0.9, 
+    parser.add_argument("--train_ratio", type=float, default=0.8, 
                       help="Ratio of data to use for training")
-    parser.add_argument("--eval_ratio", type=float, default=0.1, 
+    parser.add_argument("--eval_ratio", type=float, default=0.2, 
                       help="Ratio of data to use for evaluation")
     
     # Model arguments
     parser.add_argument("--model_name", type=str, default="deepseek-ai/deepseek-coder-1.5b", 
                       help="Pretrained model name or path")
-    parser.add_argument("--max_length", type=int, default=1024,  # Reduced from 2048 to save memory
+    parser.add_argument("--max_length", type=int, default=1024,
                       help="Maximum sequence length")
     
     # Training arguments
     parser.add_argument("--output_dir", type=str, default="./output/sft", 
                       help="Output directory for model checkpoints")
-    parser.add_argument("--batch_size", type=int, default=1,  # Reduced from 4 to save memory
+    parser.add_argument("--batch_size", type=int, default=1,
                       help="Batch size per device")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=16,  # Increased from 4 to save memory
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=16,
                       help="Number of steps for gradient accumulation")
     parser.add_argument("--num_epochs", type=float, default=3, 
                       help="Number of training epochs")
@@ -335,13 +335,13 @@ def parse_args():
                       help="Number of warmup steps")
     parser.add_argument("--lr_scheduler", type=str, default="cosine", 
                       help="Learning rate scheduler type")
-    parser.add_argument("--logging_steps", type=int, default=5, 
+    parser.add_argument("--logging_steps", type=int, default=50, 
                       help="Logging steps")
-    parser.add_argument("--eval_steps", type=int, default=5, 
+    parser.add_argument("--eval_steps", type=int, default=200, 
                       help="Evaluation steps")
-    parser.add_argument("--save_steps", type=int, default=5,  # Set to match eval_steps
+    parser.add_argument("--save_steps", type=int, default=200,
                       help="Steps between checkpoint saves")
-    parser.add_argument("--save_total_limit", type=int, default=300, 
+    parser.add_argument("--save_total_limit", type=int, default=3, 
                       help="Maximum number of checkpoints to save")
     parser.add_argument("--optimizer", type=str, default="adamw_torch", 
                       help="Optimizer to use")
@@ -361,6 +361,8 @@ def parse_args():
                       help="Whether to use 8-bit quantization")
     parser.add_argument("--gradient_checkpointing", action="store_true",
                       help="Whether to use gradient checkpointing")
+    parser.add_argument("--num_workers", type=int, default=4,
+                      help="Number of dataloader workers")
     parser.add_argument("--torch_compile", action="store_true",
                       help="Whether to use torch.compile() for PyTorch 2.0+ optimization")
     
@@ -371,7 +373,7 @@ def parse_args():
                       help="Whether to use mixed precision training")
     parser.add_argument("--use_wandb", action="store_true", 
                       help="Whether to use Weights & Biases for logging")
-    parser.add_argument("--run_name", type=str, default="deepcoderl_sft_codeforces", 
+    parser.add_argument("--run_name", type=str, default="deepcoderl_sft", 
                       help="Run name for tracking")
     
     return parser.parse_args()

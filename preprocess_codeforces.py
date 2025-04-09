@@ -1,10 +1,11 @@
 import os
 import json
-import pandas as pd
 import logging
 import numpy as np
-from tqdm import tqdm
+import random
+from collections import defaultdict
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 from typing import Dict, List, Optional, Tuple, Union
 
 # Set up logging
@@ -15,97 +16,37 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def extract_problem_description(row: pd.Series) -> str:
+def load_json_dataset(json_path: str) -> List[Dict]:
     """
-    Extract problem description from Codeforces dataset row.
-    Only uses description, input_format, output_format, and examples columns.
+    Load dataset from JSON file.
     
     Args:
-        row: A row from the Codeforces dataset
+        json_path: Path to the JSON file
     
     Returns:
-        A formatted problem description string
+        List of data records
     """
-    problem_description = ""
+    logger.info(f"Loading JSON dataset from {json_path}")
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
     
-    # Add description
-    if not pd.isna(row['description']):
-        problem_description += f"{row['description'].strip()}\n\n"
-    
-    # Add input format
-    if not pd.isna(row['input_format']):
-        problem_description += f"Input Format:\n{row['input_format'].strip()}\n\n"
-        
-    # Add output format
-    if not pd.isna(row['output_format']):
-        problem_description += f"Output Format:\n{row['output_format'].strip()}\n\n"
-    
-    # Add examples
-    if not pd.isna(row['examples']):
-        try:
-            examples = json.loads(row['examples'])
-            problem_description += "Examples:\n"
-            for i, example in enumerate(examples, 1):
-                problem_description += f"Example {i}:\n"
-                problem_description += f"Input:\n{example.get('input', '')}\n"
-                problem_description += f"Output:\n{example.get('output', '')}\n\n"
-        except (json.JSONDecodeError, TypeError):
-            # If examples can't be parsed, use as is
-            problem_description += f"Examples:\n{row['examples']}\n\n"
-    
-    return problem_description.strip()
+    logger.info(f"Loaded {len(data)} records from JSON dataset")
+    return data
 
-def extract_solution_code(row: pd.Series) -> Optional[str]:
-    """
-    Extract solution code from the accepted_solutions column.
-    
-    Args:
-        row: A row from the Codeforces dataset
-    
-    Returns:
-        The solution code or None if no valid solution is found
-    """
-    if pd.isna(row['accepted_solutions']):
-        return None
-    
-    try:
-        accepted_solutions = json.loads(row['accepted_solutions'])
-        if accepted_solutions and len(accepted_solutions) > 0:
-            # Use the first accepted solution's code field
-            return accepted_solutions[0].get('code', '')
-    except (json.JSONDecodeError, TypeError):
-        logger.warning(f"Failed to parse accepted_solutions for problem {row.get('id', 'unknown')}")
-        return None
-    
-    return None
-
-def extract_explanation(row: pd.Series) -> str:
-    """
-    Extract explanation from the editorial column.
-    
-    Args:
-        row: A row from the Codeforces dataset
-    
-    Returns:
-        The explanation string or a default explanation if none is found
-    """
-    if not pd.isna(row['editorial']):
-        return row['editorial'].strip()
-    else:
-        return "This solution implements an efficient algorithm that addresses the problem requirements."
-
-def preprocess_codeforces_data(
-    csv_path: str,
+def preprocess_json_dataset(
+    json_path: str,
     output_dir: str,
     train_ratio: float = 0.9,
     eval_ratio: float = 0.1,
     seed: int = 42
 ) -> Tuple[str, str]:
     """
-    Preprocess Codeforces dataset from CSV and split into train/eval sets.
+    Preprocess dataset from JSON and split into train/eval sets.
+    Handles the specific fields: description, input_format, output_format, note,
+    examples, editorial, and accepted_solutions.
     
     Args:
-        csv_path: Path to the Codeforces CSV file
+        json_path: Path to the JSON file
         output_dir: Directory to save processed data
         train_ratio: Ratio of data to use for training
         eval_ratio: Ratio of data to use for evaluation
@@ -115,32 +56,101 @@ def preprocess_codeforces_data(
         Tuple of (train_path, eval_path)
     """
     os.makedirs(output_dir, exist_ok=True)
+    random.seed(seed)
+    np.random.seed(seed)
     
-    # Read the CSV file
-    logger.info(f"Reading Codeforces data from {csv_path}")
-    df = pd.read_csv(csv_path)
-    logger.info(f"Loaded {len(df)} problems from Codeforces dataset")
+    # Load the dataset
+    data = load_json_dataset(json_path)
     
-    # Process each row into a standard format
-    processed_data = []
-    for _, row in tqdm(df.iterrows(), total=len(df), desc="Processing problems"):
-        # Extract problem description using only specified columns
-        problem_description = extract_problem_description(row)
+    # Group records by problem ID
+    problem_groups = defaultdict(list)
+    for record in data:
+        # Use the id field for grouping
+        problem_id = record.get('id', None)
         
-        # Extract solution code from accepted_solutions
-        solution = extract_solution_code(row)
-        if not solution:
-            # Skip problems without a solution
+        if problem_id is None:
+            logger.warning(f"Skipping record without ID")
             continue
         
-        # Extract explanation from editorial
-        explanation = extract_explanation(row)
+        problem_groups[problem_id].append(record)
+    
+    logger.info(f"Found {len(problem_groups)} unique problems with {len(data)} total solutions")
+    
+    # Create processed records with one solution per problem
+    processed_data = []
+    for problem_id, records in tqdm(problem_groups.items(), desc="Processing problems"):
+        # Use the first record for problem details
+        record = records[0]
+        
+        # Extract all required fields
+        description = record.get('description', '')
+        input_format = record.get('input_format', '')
+        output_format = record.get('output_format', '')
+        note = record.get('note', '')
+        editorial = record.get('editorial', '')
+        title = record.get('title', '')
+        
+        # Parse examples
+        examples_text = ""
+        if 'examples' in record and record['examples']:
+            try:
+                examples = json.loads(record['examples']) if isinstance(record['examples'], str) else record['examples']
+                if isinstance(examples, list):
+                    examples_text = "Examples:\n"
+                    for i, example in enumerate(examples, 1):
+                        examples_text += f"Example {i}:\n"
+                        if isinstance(example, dict):
+                            examples_text += f"Input:\n{example.get('input', '')}\n"
+                            examples_text += f"Output:\n{example.get('output', '')}\n\n"
+                        else:
+                            examples_text += f"{example}\n\n"
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"Failed to parse examples for problem {problem_id}: {e}")
+                # If we can't parse as JSON, use as raw text
+                examples_text = f"Examples:\n{record['examples']}\n\n"
+        
+        # Combine all parts into full problem description
+        problem_description = ""
+        if title:
+            problem_description += f"Title: {title}\n\n"
+        if description:
+            problem_description += f"{description.strip()}\n\n"
+        if input_format:
+            problem_description += f"Input Format:\n{input_format.strip()}\n\n"
+        if output_format:
+            problem_description += f"Output Format:\n{output_format.strip()}\n\n"
+        if examples_text:
+            problem_description += examples_text
+        if note:
+            problem_description += f"Note:\n{note.strip()}\n\n"
+        
+        problem_description = problem_description.strip()
+        
+        # Extract solution code from accepted_solutions
+        solution_code = ""
+        if 'accepted_solutions' in record and record['accepted_solutions']:
+            try:
+                solutions = json.loads(record['accepted_solutions']) if isinstance(record['accepted_solutions'], str) else record['accepted_solutions']
+                if isinstance(solutions, list) and solutions:
+                    # Select a random solution if multiple are available
+                    solution = random.choice(solutions)
+                    if isinstance(solution, dict) and 'code' in solution:
+                        solution_code = solution['code']
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"Failed to parse accepted_solutions for problem {problem_id}: {e}")
+        
+        # Skip problems without valid solutions
+        if not solution_code:
+            logger.warning(f"Skipping problem {problem_id} with no valid solution code")
+            continue
+        
+        # Use editorial as explanation
+        explanation = editorial if editorial else "No editorial explanation available."
         
         processed_data.append({
-            "id": row['id'] if not pd.isna(row['id']) else f"problem_{len(processed_data)}",
-            "title": row['title'] if not pd.isna(row['title']) else "",
+            "id": problem_id,
             "problem": problem_description,
-            "solution": solution,
+            "solution": solution_code,
             "explanation": explanation
         })
     
@@ -160,11 +170,11 @@ def preprocess_codeforces_data(
     train_path = os.path.join(output_dir, "train.json")
     eval_path = os.path.join(output_dir, "eval.json")
     
-    with open(train_path, 'w') as f:
-        json.dump(train_data, f, indent=2)
+    with open(train_path, 'w', encoding='utf-8') as f:
+        json.dump(train_data, f, indent=2, ensure_ascii=False)
     
-    with open(eval_path, 'w') as f:
-        json.dump(eval_data, f, indent=2)
+    with open(eval_path, 'w', encoding='utf-8') as f:
+        json.dump(eval_data, f, indent=2, ensure_ascii=False)
     
     logger.info(f"Saved training data to {train_path}")
     logger.info(f"Saved evaluation data to {eval_path}")
@@ -174,9 +184,9 @@ def preprocess_codeforces_data(
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="Preprocess Codeforces dataset for DeepCodeRL")
-    parser.add_argument("--csv_path", type=str, required=True, 
-                      help="Path to Codeforces CSV file")
+    parser = argparse.ArgumentParser(description="Preprocess JSON dataset for DeepCodeRL")
+    parser.add_argument("--json_path", type=str, required=True, 
+                      help="Path to JSON dataset file")
     parser.add_argument("--output_dir", type=str, default="data/processed/", 
                       help="Directory to save processed data")
     parser.add_argument("--train_ratio", type=float, default=0.9, 
@@ -188,8 +198,8 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    preprocess_codeforces_data(
-        args.csv_path,
+    preprocess_json_dataset(
+        args.json_path,
         args.output_dir,
         args.train_ratio,
         args.eval_ratio,

@@ -179,3 +179,5 @@ cython_debug/
 .pypirc
 
 output/
+
+data/processed_codeforces/
