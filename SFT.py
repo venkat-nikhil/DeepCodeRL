@@ -91,8 +91,8 @@ class CodeDataset(Dataset):
         # Construct the full text with problem, solution, and explanation
         full_text = (
             self.problem_prefix + item["problem"] +
-            self.solution_prefix + item["solution"] +
-            self.explanation_prefix + item["explanation"]
+            self.explanation_prefix + item["explanation"] +
+            self.solution_prefix + item["solution"]
         )
         
         # Tokenize the full text
@@ -114,7 +114,7 @@ class CodeDataset(Dataset):
         if self.mode == "train":
             # Mask out the loss for the problem part (we only want to predict solution and explanation)
             problem_tokens = self.tokenizer(
-                self.problem_prefix + item["problem"],
+                self.problem_prefix + item["problem"] + self.explanation_prefix + item["explanation"],
                 return_tensors="pt"
             ).input_ids[0]
             problem_length = len(problem_tokens)
