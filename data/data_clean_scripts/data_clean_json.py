@@ -159,12 +159,12 @@ def filter_for_python3_solutions(json_filename, output_filename):
                         lang = solution['programmingLanguage']
                         if lang == 'Python 3':
                             found_code = solution.get('code', None)
-                            continue
+                            break
                     if 'programming_language' in solution:
                         lang = solution['programming_language']
                         if lang == 'Python 3':
                             found_code = solution.get('code', None)
-                            continue
+                            break
                 else:
                     print(f"Expected solution to be a dict but found {type(solution).__name__}.")
 
@@ -193,5 +193,42 @@ def count_json_elts(filename):
         count = len(data)
     return count
 
-print("Number of JSON objects in the file filtered_solutions_py_decontaminated_Python3Code_all_solutions:", count_json_elts('filtered_solutions_py_decontaminated_Python3Code_all_solutions.json'))
-print("Number of JSON objects in the file filtered_solutions_py_decontaminated_Python3Code:", count_json_elts('filtered_solutions_py_decontaminated_Python3Code.json'))
+print("Number of JSON objects in the file filtered_solutions_py_decontaminated_Python3Code_all_solutions:", count_json_elts('data/cleaned_datasets/filtered_solutions_py_decontaminated_Python3Code_all_solutions.json'))
+print("Number of JSON objects in the file filtered_solutions_py_decontaminated_Python3Code:", count_json_elts('data/cleaned_datasets/filtered_solutions_py_decontaminated_Python3Code.json'))
+print("Number of JSON objects in the file filtered_solutions_py_decontaminated_Python3Code_all_solutions_non_interactive:", count_json_elts('data/cleaned_datasets/filtered_solutions_py_decontaminated_Python3Code_all_solutions_non_interactive.json'))
+
+
+def filter_for_non_interactive_problems(json_filename, output_filename):
+    '''
+    Difference from filter_for_all_python3_solutions is that this function only keeps the first Python 3 solution found.
+    '''
+    filtered_rows = []
+    
+    with open(json_filename, 'r', encoding='utf-8') as file:
+        # Load the data; strict=False allows a bit more leniency if needed.
+        data = json.load(file, strict=False)
+        
+        # Ensure data is a list of JSON objects.
+        if isinstance(data, list):
+            for entry in data:
+                interactive = False
+                non_interaction_format = entry.get('interaction_format', None)
+
+                # If accepted_solutions is a string, try parsing it.
+                if isinstance(non_interaction_format, str):
+                    if non_interaction_format != '':
+                        interactive = True
+
+                if interactive:
+                    continue
+                new_entry = entry.copy()
+                filtered_rows.append(new_entry)
+            
+            # Save the filtered rows to a new JSON file.
+            with open(output_filename, 'w', encoding='utf-8') as out_file:
+                json.dump(filtered_rows, out_file, ensure_ascii=False, indent=4)
+            
+            print(f"Filtered data saved to {output_filename}")
+
+# json_output_filename2 = 'data/cleaned_datasets/filtered_solutions_py_decontaminated_Python3Code_all_solutions_non_interactive.json'
+# filter_for_non_interactive_problems('data/cleaned_datasets/filtered_solutions_py_decontaminated_Python3Code_all_solutions.json', json_output_filename2)
