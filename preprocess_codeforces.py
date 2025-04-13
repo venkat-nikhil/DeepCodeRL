@@ -126,18 +126,23 @@ def preprocess_json_dataset(
         
         problem_description = problem_description.strip()
         
-        # Extract solution code from accepted_solutions
+        # Extract solution code from accepted_solutions - IMPROVED VERSION
         solution_code = ""
         if 'accepted_solutions' in record and record['accepted_solutions']:
-            try:
-                solutions = json.loads(record['accepted_solutions']) if isinstance(record['accepted_solutions'], str) else record['accepted_solutions']
-                if isinstance(solutions, list) and solutions:
-                    # Select a random solution if multiple are available
-                    solution = random.choice(solutions)
-                    if isinstance(solution, dict) and 'code' in solution:
-                        solution_code = solution['code']
-            except (json.JSONDecodeError, TypeError) as e:
-                logger.warning(f"Failed to parse accepted_solutions for problem {problem_id}: {e}")
+            # Handle the case where accepted_solutions is directly a string with code
+            if isinstance(record['accepted_solutions'], str):
+                # Just use it directly - no JSON parsing needed
+                solution_code = record['accepted_solutions']
+            # For completeness, handle the case where it might be a list or dict
+            elif isinstance(record['accepted_solutions'], list) and record['accepted_solutions']:
+                # Select a random solution if multiple are available
+                solution = random.choice(record['accepted_solutions'])
+                if isinstance(solution, dict) and 'code' in solution:
+                    solution_code = solution['code']
+                else:
+                    solution_code = str(solution)
+            elif isinstance(record['accepted_solutions'], dict) and 'code' in record['accepted_solutions']:
+                solution_code = record['accepted_solutions']['code']
         
         # Skip problems without valid solutions
         if not solution_code:
@@ -155,6 +160,19 @@ def preprocess_json_dataset(
         })
     
     logger.info(f"Successfully processed {len(processed_data)} problems")
+    
+    # Handle the case where no problems were processed
+    if not processed_data:
+        logger.error("No problems were processed. Check your dataset format.")
+        # Create minimal dummy data to avoid train_test_split error
+        dummy_problem = {
+            "id": "dummy",
+            "problem": "Dummy problem for testing",
+            "solution": "def solution():\n    return 'dummy'",
+            "explanation": "This is a dummy problem."
+        }
+        processed_data.append(dummy_problem)
+        logger.warning("Added a dummy problem to avoid empty dataset error.")
     
     # Split into train and eval datasets
     train_data, eval_data = train_test_split(
