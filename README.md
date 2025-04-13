@@ -9,3 +9,5 @@ python SFT.py --json_path data/processed_codeforces/filtered_solutions_py_decont
 python main.py --run_sft --run_initial_rl --batch_size 1 --gradient_accumulation_steps 32 --max_length 512 --use_fp16 --use_8bit --gradient_checkpointing --use_lora
 
 python main.py --run_sft --run_initial_rl --batch_size 4 --gradient_accumulation_steps 8 --max_length 1024 --use_fp16 --gradient_checkpointing
+
+python main.py --run_sft --run_initial_rl --batch_size 4 --gradient_accumulation_steps 8 --max_length 1024 --use_fp16 --use_lora
