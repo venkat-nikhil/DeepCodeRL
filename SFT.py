@@ -20,11 +20,7 @@ from peft import (
     TaskType
 )
 import wandb
-import argparse
 from typing import Dict, List, Optional, Tuple, Union
-
-# Import the new preprocessing module
-from preprocess_codeforces import preprocess_json_dataset
 
 # Set up logging
 logging.basicConfig(
@@ -127,35 +123,35 @@ class CodeDataset(Dataset):
         }
 
 
+# Define a custom Trainer that works with distributed models
+class DistributedModelTrainer(Trainer):
+    """
+    A custom trainer that doesn't try to move models with device_map="auto"
+    """
+    def _move_model_to_device(self, model, device):
+        # Check if the model is using device_map
+        if hasattr(model, "hf_device_map") and model.hf_device_map:
+            logger.info("Model is already distributed using device_map, skipping device placement")
+            return model
+        # Otherwise use the standard behavior
+        return super()._move_model_to_device(model, device)
+
+
 def train(args):
     """
     Train the model using supervised fine-tuning.
     
     Args:
         args: Command-line arguments
+    
+    Returns:
+        Tuple of (trainer, model)
     """
     set_seed(args.seed)
     
     # Initialize wandb for tracking experiments
-    if args.use_wandb:
+    if hasattr(args, 'use_wandb') and args.use_wandb:
         wandb.init(project="deepcoderl", name=f"sft_{args.run_name}")
-    
-    # Create processed data directory if it doesn't exist
-    os.makedirs(args.processed_data_dir, exist_ok=True)
-    
-    # Process data if not already done
-    train_path = os.path.join(args.processed_data_dir, "train.json")
-    eval_path = os.path.join(args.processed_data_dir, "eval.json")
-    
-    if not (os.path.exists(train_path) and os.path.exists(eval_path)):
-        logger.info(f"Processed data not found. Preprocessing from {args.json_path}")
-        train_path, eval_path = preprocess_json_dataset(
-            args.json_path,
-            args.processed_data_dir,
-            train_ratio=args.train_ratio,
-            eval_ratio=args.eval_ratio,
-            seed=args.seed
-        )
     
     # Memory optimization: clear CUDA cache before loading model and tokenizer
     if torch.cuda.is_available():
@@ -179,7 +175,7 @@ def train(args):
         "device_map": "auto" if torch.cuda.is_available() else None,
     }
     
-    if args.use_8bit:
+    if hasattr(args, 'use_8bit') and args.use_8bit:
         logger.info("Using 8-bit quantization")
         model_kwargs["load_in_8bit"] = True
     
@@ -189,16 +185,16 @@ def train(args):
     )
     
     # Enable gradient checkpointing to save memory
-    if args.gradient_checkpointing:
+    if hasattr(args, 'gradient_checkpointing') and args.gradient_checkpointing:
         logger.info("Enabling gradient checkpointing")
         model.gradient_checkpointing_enable()
     
     # Apply LoRA if specified (for more efficient fine-tuning)
-    if args.use_lora:
+    if hasattr(args, 'use_lora') and args.use_lora:
         logger.info("Applying LoRA for parameter-efficient fine-tuning")
         
         # Prepare model for k-bit training if using quantization
-        if args.use_8bit:
+        if hasattr(args, 'use_8bit') and args.use_8bit:
             logger.info("Preparing model for 8-bit training")
             model = prepare_model_for_kbit_training(model)
         
@@ -215,14 +211,14 @@ def train(args):
     
     # Prepare datasets
     train_dataset = CodeDataset(
-        data_path=train_path,
+        data_path=args.train_path,
         tokenizer=tokenizer,
         max_length=args.max_length,
         mode="train"
     )
     
     eval_dataset = CodeDataset(
-        data_path=eval_path,
+        data_path=args.eval_path,
         tokenizer=tokenizer,
         max_length=args.max_length,
         mode="eval"
@@ -230,17 +226,20 @@ def train(args):
     
     # Configure training arguments
     # Ensure save_steps is a multiple of eval_steps when using load_best_model_at_end
-    if args.save_steps % args.eval_steps != 0:
+    save_steps = args.save_steps
+    eval_steps = args.eval_steps
+    
+    if save_steps % eval_steps != 0:
         # Adjust save_steps to be the nearest multiple of eval_steps
-        args.save_steps = args.eval_steps * round(args.save_steps / args.eval_steps)
-        logger.info(f"Adjusted save_steps to {args.save_steps} to be a multiple of eval_steps ({args.eval_steps})")
+        save_steps = eval_steps * round(save_steps / eval_steps)
+        logger.info(f"Adjusted save_steps to {save_steps} to be a multiple of eval_steps ({eval_steps})")
     
     training_args = TrainingArguments(
-        output_dir=args.output_dir,
+        output_dir=args.sft_output_dir,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.batch_size,
         evaluation_strategy="steps",
-        eval_steps=args.eval_steps,
+        eval_steps=eval_steps,
         logging_steps=args.logging_steps,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         num_train_epochs=args.num_epochs,
@@ -248,28 +247,29 @@ def train(args):
         warmup_steps=args.warmup_steps,
         lr_scheduler_type=args.lr_scheduler,
         learning_rate=args.learning_rate,
-        save_steps=args.save_steps,
+        save_steps=save_steps,
         save_total_limit=args.save_total_limit,
         fp16=args.use_fp16,
-        report_to="wandb" if args.use_wandb else "none",
+        report_to="wandb" if (hasattr(args, 'use_wandb') and args.use_wandb) else "none",
         optim=args.optimizer,
         seed=args.seed,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         # Memory optimization options
-        dataloader_num_workers=args.num_workers,
+        dataloader_num_workers=args.num_workers if hasattr(args, 'num_workers') else 0,
         dataloader_pin_memory=True,
-        torch_compile=args.torch_compile,  # PyTorch 2.0+ optimization
+        torch_compile=(hasattr(args, 'torch_compile') and args.torch_compile),  # PyTorch 2.0+ optimization
     )
     
-    # Initialize trainer
+    # Initialize trainer - using our special trainer class
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=False,  # We're using causal language modeling (not masked)
     )
     
-    trainer = Trainer(
+    # Always use our distributed model trainer to handle device mapping correctly
+    trainer = DistributedModelTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
@@ -283,107 +283,17 @@ def train(args):
     trainer.train()
     
     # Save the final model
-    logger.info(f"Saving model to {os.path.join(args.output_dir, 'final_model')}")
-    trainer.save_model(os.path.join(args.output_dir, "final_model"))
-    tokenizer.save_pretrained(os.path.join(args.output_dir, "final_model"))
+    final_model_path = os.path.join(args.sft_output_dir, "final_model")
+    logger.info(f"Saving model to {final_model_path}")
+    trainer.save_model(final_model_path)
+    tokenizer.save_pretrained(final_model_path)
     
     # Log final metrics
     eval_results = trainer.evaluate()
     logger.info(f"Final evaluation results: {eval_results}")
-    if args.use_wandb:
+    if hasattr(args, 'use_wandb') and args.use_wandb:
         wandb.log({"final_eval": eval_results})
     
     logger.info("Training completed!")
     
     return trainer, model
-
-
-def parse_args():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="DeepCodeRL: Supervised Fine-Tuning Phase for JSON Dataset")
-    
-    # Data arguments
-    parser.add_argument("--json_path", type=str, required=True, 
-                      help="Path to JSON dataset file", default="data/processed_codeforces/filtered_solutions_py_decontaminated_Python3Code_all_solutions.json")
-    parser.add_argument("--processed_data_dir", type=str, default="data/processed_json/", 
-                      help="Directory to save processed data")
-    parser.add_argument("--train_ratio", type=float, default=0.8, 
-                      help="Ratio of data to use for training")
-    parser.add_argument("--eval_ratio", type=float, default=0.2, 
-                      help="Ratio of data to use for evaluation")
-    
-    # Model arguments
-    parser.add_argument("--model_name", type=str, default="deepseek-ai/deepseek-coder-1.5b", 
-                      help="Pretrained model name or path")
-    parser.add_argument("--max_length", type=int, default=1024,
-                      help="Maximum sequence length")
-    
-    # Training arguments
-    parser.add_argument("--output_dir", type=str, default="./output/sft", 
-                      help="Output directory for model checkpoints")
-    parser.add_argument("--batch_size", type=int, default=1,
-                      help="Batch size per device")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=16,
-                      help="Number of steps for gradient accumulation")
-    parser.add_argument("--num_epochs", type=float, default=3, 
-                      help="Number of training epochs")
-    parser.add_argument("--learning_rate", type=float, default=2e-5, 
-                      help="Learning rate")
-    parser.add_argument("--weight_decay", type=float, default=0.01, 
-                      help="Weight decay")
-    parser.add_argument("--warmup_steps", type=int, default=100, 
-                      help="Number of warmup steps")
-    parser.add_argument("--lr_scheduler", type=str, default="cosine", 
-                      help="Learning rate scheduler type")
-    parser.add_argument("--logging_steps", type=int, default=50, 
-                      help="Logging steps")
-    parser.add_argument("--eval_steps", type=int, default=200, 
-                      help="Evaluation steps")
-    parser.add_argument("--save_steps", type=int, default=200,
-                      help="Steps between checkpoint saves")
-    parser.add_argument("--save_total_limit", type=int, default=3, 
-                      help="Maximum number of checkpoints to save")
-    parser.add_argument("--optimizer", type=str, default="adamw_torch", 
-                      help="Optimizer to use")
-    
-    # LoRA arguments
-    parser.add_argument("--use_lora", action="store_true", 
-                      help="Whether to use LoRA for parameter-efficient fine-tuning")
-    parser.add_argument("--lora_r", type=int, default=16, 
-                      help="LoRA attention dimension")
-    parser.add_argument("--lora_alpha", type=int, default=32, 
-                      help="LoRA alpha parameter")
-    parser.add_argument("--lora_dropout", type=float, default=0.05, 
-                      help="LoRA dropout probability")
-    
-    # Memory optimization arguments
-    parser.add_argument("--use_8bit", action="store_true",
-                      help="Whether to use 8-bit quantization")
-    parser.add_argument("--gradient_checkpointing", action="store_true",
-                      help="Whether to use gradient checkpointing")
-    parser.add_argument("--num_workers", type=int, default=4,
-                      help="Number of dataloader workers")
-    parser.add_argument("--torch_compile", action="store_true",
-                      help="Whether to use torch.compile() for PyTorch 2.0+ optimization")
-    
-    # Misc arguments
-    parser.add_argument("--seed", type=int, default=42, 
-                      help="Random seed")
-    parser.add_argument("--use_fp16", action="store_true", 
-                      help="Whether to use mixed precision training")
-    parser.add_argument("--use_wandb", action="store_true", 
-                      help="Whether to use Weights & Biases for logging")
-    parser.add_argument("--run_name", type=str, default="deepcoderl_sft", 
-                      help="Run name for tracking")
-    
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    args = parse_args()
-    
-    # Create output directory if it doesn't exist
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Run the training
-    trainer, model = train(args)
