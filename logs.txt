@@ -1,0 +1,791 @@
+PS C:\Assignments\NLU\Project\DeepCodeRL>  c:; cd 'c:\Assignments\NLU\Project\DeepCodeRL'; & 'c:\Users\kvns2\AppData\Local\Programs\Python\Python311\python.exe' 'c:\Users\kvns2\.vscode\extensions\ms-python.debugpy-2025.6.0-win32-x64\bundled\libs\debugpy\launcher' '51148' '--' 'c:\Assignments\NLU\Project\DeepCodeRL\test.py' 
+-1
+PS C:\Assignments\NLU\Project\DeepCodeRL>  c:; cd 'c:\Assignments\NLU\Project\DeepCodeRL'; & 'c:\Users\kvns2\AppData\Local\Programs\Python\Python311\python.exe' 'c:\Users\kvns2\.vscode\extensions\ms-python.debugpy-2025.6.0-win32-x64\bundled\libs\debugpy\launcher' '51168' '--' 'c:\Assignments\NLU\Project\DeepCodeRL\test.py' 
+-1
+None
+PS C:\Assignments\NLU\Project\DeepCodeRL>  c:; cd 'c:\Assignments\NLU\Project\DeepCodeRL'; & 'c:\Users\kvns2\AppData\Local\Programs\Python\Python311\python.exe' 'c:\Users\kvns2\.vscode\extensions\ms-python.debugpy-2025.6.0-win32-x64\bundled\libs\debugpy\launcher' '51182' '--' 'c:\Assignments\NLU\Project\DeepCodeRL\test.py' 
+-1
+1 2 4
+1 2 6
+PS C:\Assignments\NLU\Project\DeepCodeRL> python tmp.py                                                                                       
+Loading checkpoint shards: 100%|███████████████████████████████████████████████████████████████████████████████| 2/2 [00:02<00:00,  1.06s/it] 
+Setting `pad_token_id` to `eos_token_id`:151643 for open-end generation.
+You will be given a competitive programming problem.
+            Analyze the maximum input constraints and identify the optimal algorithmic approach and data structures needed to process the largest possible test cases within the time and memory limits, then explain why your chosen implementation strategy is the most efficient solution. Please reason step by step about your solution approach, then provide a complete implementation in Python 3 that is thoroughly optimized for both speed and memory usage.
+
+            Your solution must read input from standard input (input()), write output to standard output (print()).
+            Do not include any debug prints or additional output.
+
+            Put your final solution within a single code block:
+            python
+            <your code here>
+            PROBLEM:
+Title: Plant
+
+Dwarfs have planted a very interesting plant, which is a triangle directed "upwards". This plant has an amusing feature. After one year a triangle plant directed "upwards" divides into four triangle plants: three of them will point "upwards" and one will point "downwards". After another year, each triangle plant divides into four triangle plants: three of them will be directed in the same direction as the parent plant, and one of them will be directed in the opposite direction. Then each year the process repeats. The figure below illustrates this process.       
+
+Help the dwarfs find out how many triangle plants that point "upwards" will be in n years.
+
+Input Format:
+The first line contains a single integer n (0 ≤ n ≤ 1018) — the number of full years when the plant grew.
+
+Please do not use the %lld specifier to read or write 64-bit integers in С++. It is preferred to use cin, cout streams or the %I64d specifier.
+
+Output Format:
+Print a single integer — the remainder of dividing the number of plants that will point "upwards" in n years by 1000000007 (109 + 7).
+
+Examples:
+Example 1:
+Input:
+1
+Output:
+3
+
+Example 2:
+Input:
+2
+Output:
+10
+
+Note:
+The first test sample corresponds to the second triangle on the figure in the statement. The second test sample corresponds to the third one. 
+
+Wait, perhaps I should recheck. Wait, the first example input is 1, and the output is 3. So perhaps after one year, the number of upward-pointing triangles is 3.
+
+Wait, maybe I should think about the problem as a mathematical one.
+
+Each year, each triangle divides into four, with the number of upward and downward triangles depending on the direction of the parent.        
+
+Let me try to model the number of upward and downward triangles each year.
+
+Let’s denote:
+
+u_n: number of upward-pointing triangles after n years.
+
+d_n: number of downward-pointing triangles after n years.
+
+Initially, at year 0, the plant is a single upward-pointing triangle. So u_0 = 1, d_0 = 0.
+
+Each year, each triangle splits into four triangles, with the directions as per the rules.
+
+Wait, the problem says:
+
+After one year, a triangle divides into four: three upward, one downward.
+
+Then, in the next year, each triangle splits again. So for each of the four triangles from the previous year, each will split into four again, according to the rules.
+
+So perhaps the process is recursive in the number of splits.
+
+But perhaps it's better to model how u_n and d_n change each year.
+
+Let’s think about the transition.
+
+At any step, each upward triangle will produce three upward and one downward.
+
+Each downward triangle will produce three downward and one upward.
+
+Because:
+
+Each year, each triangle splits into four. So for any triangle, regardless of direction, the new directions are determined.
+
+Wait, perhaps not. Let's read the problem statement again.
+
+After one year, a triangle (upwards) divides into four: three up, one down.
+
+After another year, each triangle (the new ones) divides into four. Each triangle's direction depends on its parent.
+
+So each upward triangle will produce three up and one down.
+
+Each downward triangle will produce three down and one up.
+
+So the transition can be described as:
+
+Each upward triangle contributes to the next year's u and d as:
+
+u_new += 3 * u_prev (each upward triangle splits into 3 upward, 1 downward. Wait, no: wait, each upward triangle becomes three upward and one downward. So for each upward triangle, the next year's u increases by 3, and d increases by 1.
+
+Similarly, each downward triangle will split into three downward and one upward. So for each downward triangle, the next year's u increases by 1, and d increases by 3.
+
+Therefore, the recurrence relations are:
+
+u_{n+1} = 3 * u_n + 1 * d_n
+
+d_{n+1} = 1 * u_n + 3 * d_n
+
+Because for each upward triangle, it contributes 3 to u and 1 to d.
+
+Each downward triangle contributes 1 to u and 3 to d.
+
+So the total u_{n+1} = 3*u_n + d_n.
+
+Similarly, d_{n+1} = u_n + 3*d_n.
+
+Now, since the problem is to find u_n after n years, let's see how we can model this.
+
+But wait, given that n can be up to 1018, we need an efficient way to compute u_n.
+
+We can model this using a recursive approach or perhaps matrix exponentiation.
+
+But considering that each step depends on the previous step, perhaps it's manageable with dynamic programming, but for n=1018, it's better to find a mathematical formula or a way to compute it with exponentiation.
+
+But let's see: perhaps we can model the recurrence as a linear transformation.
+
+Let’s consider the vector [u_{n+1}, d_{n+1}] = M * [u_n, d_n], where M is a matrix.
+
+From the recurrence:
+
+u_{n+1} = 3*u_n + d_n
+
+d_{n+1} = u_n + 3*d_n
+
+So M is:
+
+[3, 1]
+
+[1, 3]
+
+Yes.
+
+So the state vector [u, d] evolves as [u, d] multiplied by M each step.
+
+Therefore, after n steps, the state is [u_n, d_n] = M^n * [u_0, d_0].
+
+We know that u_0 =1, d_0=0.
+
+So, to compute u_n, we can compute M^n and multiply it by [1,0]^T.
+
+But for n up to 1018, we can compute M^n using matrix exponentiation, which is O(log n) time.
+
+But perhaps for such a small n (up to 1018), even a dynamic programming approach with O(n) time is manageable.
+
+But perhaps it's better to model it as a matrix exponentiation problem.
+
+So, let's think about how to model this.
+
+We can represent the state as a vector [u, d], and each step is a multiplication by M.
+
+So, for n steps, the state is M^n multiplied by the initial state [1,0].
+
+The initial state is [1,0].
+
+We can compute M^n, then multiply by [1,0], then the first element is u_n.
+
+But since the problem requires computing u_n mod 1e9+7, we can perform all operations modulo 1e9+7.
+
+Therefore, the plan is:
+
+1. Compute M^n, where M is [[3,1],[1,3]].
+
+2. Multiply this matrix by the initial vector [1,0]^T, resulting in [u_n, d_n].
+
+3. Output u_n mod 1e9+7.
+
+But how to compute M^n efficiently?
+
+We can use exponentiation by squaring.
+
+In Python, we can represent M as a matrix and perform matrix multiplication.
+
+But perhaps we can find a way to model this with a recursive formula or find a pattern.
+
+Alternatively, perhaps we can find a formula for u_n.
+
+Looking for a pattern.
+
+Let's compute some small n and see.
+
+n=0: u=1, d=0.
+
+n=1: u=3*1 +0=3, d=1*1 +0=1.
+
+n=2: u=3*3 +1=10, d=3*1 +3*1= 3+3=6? Wait, wait, perhaps I should compute step by step.
+
+Wait, for n=1:
+
+u_1 =3*1 +0=3.
+
+d_1=1*1 +3*0=1.
+
+For n=2:
+
+u_2=3*u_1 +d_1=3*3 +1=10.
+
+d_2=u_1 +3*d_1=3 +3*1=6.
+
+For n=3:
+
+u_3=3*u_2 +d_2=3*10 +6=36.
+
+d_3= u_2 +3*d_2=10 +3*6=28.
+
+Hmm.
+
+Looking at the values:
+
+n | u_n | d_n
+
+0 |1 |0
+
+1 |3 |1
+
+2 |10 |6
+
+3 |36 |28
+
+4 | ?
+
+Let’s compute u_4:
+
+u_4=3*u_3 +d_3=3*36 +28=108+28=136.
+
+d_4= u_3 +3*d_3=36 +3*28=36+84=120.
+
+n=4: u=136, d=120.
+
+n=5:
+
+u=3*136 +120=408+120=528.
+
+d=136 +3*120=136+360=496.
+
+Hmm.
+
+Now, perhaps we can model u_n as a linear recurrence.
+
+Looking at the recurrence:
+
+u_{n+1} =3u_n +d_n.
+
+But since d_n can be expressed in terms of u and d of previous steps, perhaps we can find a way to model u_{n+1} in terms of u_n and u_{n-1}. 
+
+Alternatively, perhaps we can find a recurrence for u_n alone.
+
+But perhaps let's see the initial terms:
+
+n=0: u=1.
+
+n=1:3.
+
+n=2:10.
+
+n=3:36.
+
+n=4:136.
+
+Looking for a pattern.
+
+Let's see the ratios:
+
+3/1=3.
+
+10/3≈3.333.
+
+36/10=3.6.
+
+136/36≈3.8.
+
+Hmm, seems to approach 4.
+
+But perhaps that's a coincidence.
+
+Alternatively, perhaps the recurrence is u_{n} = 4*u_{n-1} - u_{n-2}.
+
+Let's check.
+
+Compute for n=2:
+
+4*3 -1=12-1=11, which is not equal to 10.
+
+So perhaps not.
+
+Alternatively, perhaps the recurrence is u_{n+1} =4u_n -u_{n-1}.
+
+Let's check:
+
+At n=1: u_2=4*u_1 - u_0=4*3-1=12-1=11. But u_2 is 10, which doesn't match.
+
+So perhaps that's not the case.
+
+Alternatively, perhaps the recurrence is u_{n+1} =3u_n +d_n, and since d_n = (u_{n-1} + 3d_{n-1}), perhaps substituting d_n.
+
+But perhaps this is getting complicated. Maybe it's better to model this with matrix exponentiation.
+
+So, to compute M^n, where M is [[3,1],[1,3]], and then multiply by [u_0, d_0]^T.
+
+But since we are dealing with exponents up to 1018, we can represent the matrix exponentiation as a function that computes M^n quickly.       
+
+In Python, perhaps we can represent the matrix as a list of lists, and implement matrix multiplication and exponentiation.
+
+Alternatively, perhaps we can find a way to compute u_n using a recurrence relation that can be computed efficiently.
+
+Let me think about the recurrence for u_n.
+
+We have:
+
+u_{n} =3u_{n-1} +d_{n-1}.
+
+But d_{n-1} can be expressed as:
+
+d_{n-1} = u_{n-2} +3d_{n-2}.
+
+So substituting:
+
+u_{n} =3u_{n-1} + (u_{n-2} +3d_{n-2}).
+
+But this seems to complicate things.
+
+Alternatively, perhaps we can find a way to express u_n in terms of previous u terms.
+
+Looking back to the earlier examples:
+
+n | u_n
+
+0 |1
+
+1 |3= 3*1 +0
+
+2 |10=3*3 +1=10
+
+3 |36=3*10 +6=36.
+
+Wait, perhaps we can find a pattern for u_n.
+
+Looking at the values:
+
+n | u_n
+
+0 |1
+
+1 |3
+
+2 |10
+
+3 |36
+
+4 |136
+
+Looking for a recurrence.
+
+Let’s compute the differences between consecutive terms.
+
+3-1=2.
+
+10-3=7.
+
+36-10=26.
+
+136-36=100.
+
+Looking at the differences: 2,7,26,100.
+
+Not obvious.
+
+Alternatively, perhaps look for a pattern in the values.
+
+Alternatively, perhaps model this as a linear recurrence.
+
+We can try to find a recurrence for u_n.
+
+We have:
+
+u_{n} =3u_{n-1} +d_{n-1}.
+
+But d_{n-1} =u_{n-2} +3d_{n-2}.
+
+Substituting:
+
+u_{n} =3u_{n-1} +u_{n-2} +3d_{n-2}.
+
+But d_{n-2} can be expressed as:
+
+d_{n-2} =u_{n-3} +3d_{n-3}.
+
+Substituting again:
+
+u_{n} =3u_{n-1} +u_{n-2} +3(u_{n-3} +3d_{n-3}).
+
+This seems to be getting more complicated.
+
+Perhaps instead of trying to find a recurrence for u_n, we can model the matrix exponentiation approach.
+
+So, let's proceed with the matrix exponentiation approach.
+
+In Python, we can represent the matrix as a list of lists, and write functions to multiply matrices and to compute the power of a matrix.     
+
+But perhaps for better performance, we can represent the matrices as tuples of tuples, and perform the multiplications accordingly.
+
+Alternatively, perhaps for this problem, we can model the state transitions and compute the required exponent.
+
+Let’s think about the matrix M.
+
+M is:
+
+[3,1]
+
+[1,3]
+
+We need to compute M^n, then multiply by the initial vector [1,0].
+
+The initial vector is [u0, d0] = [1,0].
+
+After multiplying M^n by [1,0], the resulting vector is [u_n, d_n].
+
+So, the first element of the resulting vector is u_n.
+
+Thus, the plan is to compute M^n, multiply it by the initial vector, then take the first element.
+
+But how to represent the matrix multiplication in code.
+
+Let’s think about how to multiply two 2x2 matrices.
+
+Given matrices A and B:
+
+A = [[a11, a12],
+     [a21, a22]]
+B = [[b11, b12],
+     [b21, b22]]
+
+The product C = A * B is:
+
+C[0][0] = a11*b11 + a12*b21
+
+C[0][1] = a11*b12 + a12*b22
+
+C[1][0] = a21*b11 + a22*b21
+
+C[1][1] = a21*b12 + a22*b22
+
+So, in code, for a function that multiplies two 2x2 matrices, we can write a helper function.
+
+Similarly, for exponentiation, we can use the exponentiation by squaring method.
+
+Thus, perhaps the code can be structured as follows:
+
+- Read n from input.
+
+- If n is 0, output 1 mod MOD.
+
+Else, compute M^n, multiply by [1, 0], and take the first element.
+
+But perhaps the code can be written to handle this.
+
+Now, let's think about the code.
+
+We can represent matrices as lists of lists.
+
+For example, M is [[3,1], [1,3]].
+
+The initial vector is [1,0].
+
+We can represent the state as a vector, and each step as a matrix multiplication.
+
+But perhaps for our purposes, since each step is a matrix multiplication followed by a vector multiplication, perhaps it's easier to model the matrix exponentiation and then compute the vector.
+
+But perhaps it's easier to represent the state as a vector and perform the multiplication each time.
+
+Alternatively, perhaps we can model the state as a vector, and each step multiply by M.
+
+Thus, perhaps the code can be structured as follows.
+
+But perhaps let's proceed with the code.
+
+We can define a function mat_mult(a, b) that multiplies two 2x2 matrices a and b.
+
+Similarly, define a function mat_pow(mat, power) that computes mat^power using exponentiation by squaring.
+
+Once we have M^n, then multiply by the initial vector [1,0], we get u_n.
+
+So, the code steps:
+
+Read n.
+
+If n is 0: output 1 mod MOD.
+
+Else:
+
+Compute M = [[3,1], [1,3]].
+
+Compute M^n.
+
+Multiply this matrix by the initial vector [1,0] to get [u_n, d_n].
+
+Output u_n mod MOD.
+
+But wait, perhaps the initial vector is [u0, d0] = [1,0], and each step is multiplied by M.
+
+Thus, after n steps, it's M^n multiplied by [1,0].
+
+Thus, perhaps the code can represent this.
+
+But perhaps it's easier to model the state as a vector and perform the multiplication each time.
+
+Alternatively, perhaps we can compute M^n, then compute the resulting vector.
+
+But perhaps it's easier to represent the state as a vector, and each step multiply by M.
+
+Thus, perhaps the code can be:
+
+MOD = 10**9 +7.
+
+n = int(input())
+
+if n ==0:
+
+    print(1 % MOD)
+
+else:
+
+    # compute M^n
+
+    def mat_mult(a, b):
+
+        # multiply two 2x2 matrices
+
+        return [[(a[0][0]*b[0][0] + a[0][1]*b[1][0])%MOD, (a[0][0]*b[0][1] + a[0][1]*b[1][1])%MOD],
+
+                [(a[1][0]*b[0][0] + a[1][1]*b[1][0])%MOD, (a[1][0]*b[0][1] + a[1][1]*b[1][1])%MOD]]
+
+    def mat_pow(mat, power):
+
+        # compute mat^power using exponentiation by squaring
+
+        result = [[1,0], [0,1]] # identity matrix
+
+        while power >0:
+
+            if power %2 ==1:
+
+                result = mat_mult(result, mat)
+
+            mat = mat_mult(mat, mat)
+
+            power = power //2
+
+        return result
+
+    M = [[3,1], [1,3]]
+
+    M_pow = mat_pow(M, n)
+
+    # multiply M_pow with initial vector [1, 0]
+
+    u_n = (M_pow[0][0] *1 + M_pow[0][1] *0) % MOD
+
+    print(u_n)
+
+Wait, perhaps not. Because in the code, mat_mult is a function that returns the product matrix. But perhaps when we compute M_pow, which is M^n, and then multiply it with [1,0], the initial vector.
+
+But perhaps the code can be written as:
+
+After computing M_pow, which is M^n, we can compute the resulting vector as:
+
+u_n = (M_pow[0][0] *1 + M_pow[0][1] *0) % MOD.
+
+But perhaps the code is correct.
+
+Let's test with the sample input.
+
+Sample Input 1:
+
+1
+
+Expected Output:3.
+
+Compute M^1 is [[3,1],[1,3]].
+
+Multiply by [1,0] gives [3*1 +1*0, 1*1 +3*0] = [3,1].
+
+Thus, u_n is 3. Correct.
+
+Sample Input 2:
+
+2.
+
+Compute M^2:
+
+M^2 = M * M.
+
+M is [[3,1],[1,3]].
+
+Compute M*M:
+
+First row:
+
+3*3 +1*1=9+1=10.
+
+3*1 +1*3=3+3=6.
+
+Second row:
+
+1*3 +3*1=3+3=6.
+
+1*1 +3*3=1+9=10.
+
+Thus, M^2 is [[10,6],[6,10]].
+
+Multiply by [1,0]: 10*1 +6*0=10.
+
+Which is correct for n=2.
+
+Thus, the code seems to work.
+
+Now, let's think about the case when n=0: output is 1.
+
+For n=3: M^3 is M^2 * M.
+
+Which is [[10,6],[6,10]] * [[3,1],[1,3]].
+
+Compute this:
+
+First row:
+
+10*3 +6*1=30+6=36.
+
+10*1 +6*3=10+18=28.
+
+Second row:
+
+6*3 +10*1=18+10=28.
+
+6*1 +10*3=6+30=36.
+
+Thus, M^3 is [[36,28],[28,36]].
+
+Multiply by [1,0] gives 36.
+
+Which is correct for n=3.
+
+Thus, the code works.
+
+But in the code, mat_mult is a function that returns the product matrix, but when we multiply M_pow (which is M^n) with the initial vector [1,0], perhaps the code should compute:
+
+u_n = M_pow[0][0] *1 + M_pow[0][1] *0.
+
+Which is M_pow[0][0].
+
+Thus, perhaps the code can be optimized.
+
+But perhaps the code as written is correct.
+
+Now, considering the constraints, n can be up to 1018. So the code should compute M^1018 in O(log n) time, which is acceptable.
+
+Thus, the code should work.
+
+Now, let's write the code.
+
+But wait, the code as written has a problem. Because mat_mult returns the product matrix, but when we multiply M_pow (which is M^n) by the initial vector, perhaps it's better to compute it as the first row of M_pow multiplied by the initial vector.
+
+Thus, perhaps the code can be adjusted.
+
+But perhaps the code is correct as written.
+
+Thus, the code is as follows:
+
+Read n.
+
+If n is 0: output 1.
+
+Else:
+
+Compute M^n.
+
+Multiply it by [1, 0], which is u_n.
+
+Thus, the code should be correct.
+</think>
+
+To solve this problem, we need to determine the number of upward-pointing triangle plants after `n` years, given the specific growth pattern of the plants. The solution involves using matrix exponentiation to efficiently compute the result for large values of `n`.
+
+### Approach
+1. **Problem Analysis**: Each year, each upward-pointing triangle splits into three upward-pointing triangles and one downward-pointing triangle, while each downward-pointing triangle splits into three downward-pointing triangles and one upward-pointing triangle. We can model this growth using a recurrence relation.
+2. **Matrix Representation**: The growth can be represented using a transformation matrix. Each year's transformation can be expressed as a matrix multiplication.
+3. **Matrix Exponentiation**: Using matrix exponentiation, we can efficiently compute the transformation after `n` years by raising the transformation matrix to the power of `n`.
+4. **Initial State**: Start with an initial state vector representing the number of upward and downward triangles at year 0.
+5. **Result Calculation**: After computing the transformation matrix raised to the power of `n`, multiply it by the initial state vector to get the result.
+
+### Solution Code
+```python
+MOD = 10**9 + 7
+
+def main():
+    n = int(input())
+    if n == 0:
+        print(1 % MOD)
+        return
+
+    def mat_mult(a, b):
+        return [
+            [(a[0][0] * b[0][0] + a[0][1] * b[1][0]) % MOD,
+             (a[0][0] * b[0][1] + a[0][1] * b[1][1]) % MOD],
+            [(a[1][0] * b[0][0] + a[1][1] * b[1][0]) % MOD,
+             (a[1][0] * b[0][1] + a[1][1] * b[1][1]) % MOD]
+        ]
+
+    def mat_pow(mat, power):
+        result = [[1, 0], [0, 1]]  # Identity matrix
+        while power > 0:
+            if power % 2 == 1:
+                result = mat_mult(result, mat)
+            mat = mat_mult(mat, mat)
+            power //= 2
+        return result
+
+    M = [[3, 1], [1, 3]]
+    M_pow = mat_pow(M, n)
+
+    u_n = (M_pow[0][0] * 1 + M_pow[0][1] * 0) % MOD
+    print(u_n)
+
+if __name__ == "__main__":
+    main()
+```
+
+### Explanation
+1. **Matrix Multiplication**: The `mat_mult` function multiplies two 2x2 matrices under modulo `10^9 + 7`.
+2. **Matrix Exponentiation**: The `mat_pow` function uses exponentiation by squaring to efficiently compute the power of a matrix.
+3. **Initial State and Transformation**: The initial state vector is `[1, 0]` representing one upward-pointing triangle. The transformation matrix `M` is raised to the power of `n` to model the growth over `n` years.
+4. **Result Calculation**: The resulting matrix after exponentiation is multiplied by the initial state vector to get the number of upward-pointing triangles after `n` years, which is then printed modulo `10^9 + 7`.
+
+This approach efficiently handles the problem constraints and provides the correct result even for large values of `n`.
+PS C:\Assignments\NLU\Project\DeepCodeRL> python test.py                                                                                      
+3                                                                                                                                             
+10
+PS C:\Assignments\NLU\Project\DeepCodeRL> python main.py --run_sft --batch_size 1 --gradient_accumulation_steps 16 --max_length 1024 --use_fp16 --gradient_checkpointing --use_lora
+04/15/2025 01:10:58 - INFO - datasets - PyTorch version 2.6.0+cu124 available.
+04/15/2025 01:11:01 - INFO - __main__ - Starting Supervised Fine-Tuning Phase...
+04/15/2025 01:11:01 - INFO - __main__ - Using existing processed data from data/processed_sft/
+04/15/2025 01:11:02 - INFO - SFT - Loading base model: agentica-org/DeepScaleR-1.5B-Preview
+04/15/2025 01:11:02 - INFO - accelerate.utils.modeling - We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
+Loading checkpoint shards: 100%|███████████████████████████████████████████████████████████████████████████████| 2/2 [00:02<00:00,  1.24s/it]
+04/15/2025 01:11:05 - INFO - SFT - Enabling gradient checkpointing
+04/15/2025 01:11:05 - INFO - SFT - Applying LoRA for parameter-efficient fine-tuning
+trainable params: 18,464,768 || all params: 1,795,552,768 || trainable%: 1.0284
+04/15/2025 01:11:06 - INFO - SFT - Loaded 1936 examples from data/processed_sft/train.json for train
+04/15/2025 01:11:06 - INFO - SFT - Loaded 216 examples from data/processed_sft/eval.json for eval
+C:\Users\kvns2\AppData\Local\Programs\Python\Python311\Lib\site-packages\transformers\training_args.py:1594: FutureWarning: `evaluation_strategy` is deprecated and will be removed in version 4.46 of 🤗 Transformers. Use `eval_strategy` instead
+  warnings.warn(
+C:\Assignments\NLU\Project\DeepCodeRL\SFT.py:272: FutureWarning: `tokenizer` is deprecated and will be removed in version 5.0.0 for `DistributedModelTrainer.__init__`. Use `processing_class` instead.
+  trainer = DistributedModelTrainer(
+04/15/2025 01:11:06 - INFO - SFT - Model is already distributed using device_map, skipping device placement
+No label_names provided for model class `PeftModelForCausalLM`. Since `PeftModel` hides base models input arguments, if label_names is not given, label_names can't be set automatically within `Trainer`. Note that empty label_names list will be used instead.
+04/15/2025 01:11:06 - INFO - SFT - Starting training...
+  0%|                                                                                                                | 0/121 [00:00<?, ?it/s]04/15/2025 01:11:13 - INFO - datasets - PyTorch version 2.6.0+cu124 available.
+04/15/2025 01:11:21 - INFO - datasets - PyTorch version 2.6.0+cu124 available.
+04/15/2025 01:11:30 - INFO - datasets - PyTorch version 2.6.0+cu124 available.
+04/15/2025 01:11:38 - INFO - datasets - PyTorch version 2.6.0+cu124 available.
+`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`.
+{'loss': 2.37, 'grad_norm': 0.9270303249359131, 'learning_rate': 1e-05, 'epoch': 0.41}
+{'loss': 1.8738, 'grad_norm': 0.33633115887641907, 'learning_rate': 2e-05, 'epoch': 0.83}                                                     
+{'train_runtime': 1458.7913, 'train_samples_per_second': 1.327, 'train_steps_per_second': 0.083, 'train_loss': 2.0370062205417097, 'epoch': 1.0}
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 121/121 [24:18<00:00, 12.06s/it] 
+04/15/2025 01:35:25 - INFO - SFT - Saving model to ./output/sft\final_model
+04/15/2025 01:35:33 - INFO - datasets - PyTorch version 2.6.0+cu124 available.
+04/15/2025 01:35:42 - INFO - datasets - PyTorch version 2.6.0+cu124 available.
+04/15/2025 01:35:52 - INFO - datasets - PyTorch version 2.6.0+cu124 available.
+04/15/2025 01:36:01 - INFO - datasets - PyTorch version 2.6.0+cu124 available.
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 216/216 [00:52<00:00,  4.13it/s]
+04/15/2025 01:36:56 - INFO - SFT - Final evaluation results: {'eval_loss': 1.573482632637024, 'eval_runtime': 90.6443, 'eval_samples_per_second': 2.383, 'eval_steps_per_second': 2.383, 'epoch': 1.0}
+04/15/2025 01:36:56 - INFO - SFT - Training completed!
+04/15/2025 01:36:56 - INFO - __main__ - Supervised Fine-Tuning Phase completed. Model saved to ./output/sft\final_model
+04/15/2025 01:36:56 - INFO - __main__ - DeepCodeRL pipeline completed successfully.
+PS C:\Assignments\NLU\Project\DeepCodeRL> 

@@ -183,3 +183,9 @@ output/
 data/processed_codeforces/
 
 data/processed_sft/
+
+test.py
+
+tmp.py
+
+test_original.py
