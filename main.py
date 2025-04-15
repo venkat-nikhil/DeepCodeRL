@@ -202,6 +202,8 @@ def parse_args():
                       help="Random seed")
     parser.add_argument("--use_fp16", action="store_true", 
                       help="Whether to use mixed precision training")
+    parser.add_argument("--bf16", action="store_true",            # ← NEW
+                    help="Use bfloat16 mixed precision")
     parser.add_argument("--use_wandb", action="store_true", 
                       help="Whether to use Weights & Biases for logging")
     parser.add_argument("--run_name", type=str, default="deepcoderl", 
