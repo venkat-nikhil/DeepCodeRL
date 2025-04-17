@@ -170,8 +170,14 @@ def train(args):
     
     # Load model with memory optimizations
     logger.info(f"Loading base model: {args.model_name}")
+    if args.use_fp16 and torch.cuda.is_available():
+        torch_dtype = torch.float16
+    elif args.bf16:
+        torch_dtype = torch.bfloat16
+    else:
+        torch_dtype = torch.float32
     model_kwargs = {
-        "torch_dtype": torch.float16 if args.use_fp16 else torch.float32,
+        "torch_dtype": torch_dtype,
         "device_map": "auto" if torch.cuda.is_available() else None,
     }
     
@@ -238,7 +244,7 @@ def train(args):
         output_dir=args.sft_output_dir,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.batch_size,
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=eval_steps,
         logging_steps=args.logging_steps,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -250,6 +256,7 @@ def train(args):
         save_steps=save_steps,
         save_total_limit=args.save_total_limit,
         fp16=args.use_fp16,
+        bf16=args.bf16,
         report_to="wandb" if (hasattr(args, 'use_wandb') and args.use_wandb) else "none",
         optim=args.optimizer,
         seed=args.seed,

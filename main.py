@@ -136,7 +136,7 @@ def parse_args():
     # SFT specific arguments
     parser.add_argument("--sft_output_dir", type=str, default="./output/sft", 
                       help="Output directory for SFT model checkpoints")
-    parser.add_argument("--model_name", type=str, default="deepseek-ai/deepseek-r1-distill-qwen-1.5b", 
+    parser.add_argument("--model_name", type=str, default="agentica-org/DeepScaleR-1.5B-Preview", 
                       help="Pretrained model name or path")
     parser.add_argument("--batch_size", type=int, default=1,
                       help="Batch size per device")
@@ -202,6 +202,8 @@ def parse_args():
                       help="Random seed")
     parser.add_argument("--use_fp16", action="store_true", 
                       help="Whether to use mixed precision training")
+    parser.add_argument("--bf16", action="store_true",            # ← NEW
+                    help="Use bfloat16 mixed precision")
     parser.add_argument("--use_wandb", action="store_true", 
                       help="Whether to use Weights & Biases for logging")
     parser.add_argument("--run_name", type=str, default="deepcoderl", 
