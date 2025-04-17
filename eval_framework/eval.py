@@ -33,15 +33,16 @@ def check_output(command, input=None, expected_output=None, timeout=5.0) -> Tupl
         return False, logger_str
     else:
         # If it's a subprocess.CompletedProcess object, print stdout and stderr
-        logger_str += f"STDOUT: {run_subproc_result.stdout}\n"
-        logger_str += f"STDERR: {run_subproc_result.stderr}"
+        logger_str += f"STDOUT: {run_subproc_result.stdout}"
+        if run_subproc_result.stderr != "":
+            logger_str += f"STDERR: {run_subproc_result.stderr}\n"
     if expected_output is None:
         return True, logger_str
     actual_output = run_subproc_result.stdout.strip()
     if actual_output.strip() == expected_output.strip():
         return True, logger_str
     else:
-        return False, logger_str + f"\nExpected Output: {expected_output.strip()}\nActual Output: {actual_output.strip()}"
+        return False, logger_str + f"Expected Output: {expected_output.strip()}\nActual Output: {actual_output.strip()}\n"
 
 def test_code_with_outputs(code_with_tests, timeout=5.0):
     results = []
@@ -79,10 +80,10 @@ commands_with_inputs  = [
 ]
 
 test_inputs  = [
-    [['python', '-c', '''def solve (n,seq) :\r\n    seq.sort()\r\n    start = 1\r\n    moves = 0\r\n    while start <= n :\r\n        if seq[start-1] != start :\r\n            moves += abs(seq[start-1] - start)\r\n        start += 1\r\n        \r\n        \r\n    return moves\r\n    \r\n    \r\nn = int(input())\r\nseq = list(map(int,input().split()))\r\n\r\nprint (solve(n,seq))\r\n\r\n  \r\n        \r\n\r\n    \r\n\r\n\r\n    \r\n   '''], 
+    ['''def solve (n,seq) :\r\n    seq.sort()\r\n    start = 1\r\n    moves = 0\r\n    while start <= n :\r\n        if seq[start-1] != start :\r\n            moves += abs(seq[start-1] - start)\r\n        start += 1\r\n        \r\n        \r\n    return moves\r\n    \r\n    \r\nn = int(input())\r\nseq = list(map(int,input().split()))\r\n\r\nprint (solve(n,seq))\r\n\r\n  \r\n        \r\n\r\n    \r\n\r\n\r\n    \r\n   ''', 
      ["2\n3 0", "3\n-1 -1 2"], 
      ["2", "6"]],
-    [['python', '-c', '''n, m = map(int, input().split())\nmydiv = n // m\nmymod = n % m\nmylist = [ mydiv for _ in range(m) ]\nif  mymod == 0 :\n    out = ' '.join(str(i) for i in mylist)\nelse :\n    for i in mylist :\n        mylist[mylist.index(i)] += 1\n        mymod -= 1\n        if mymod == 0 :\n            out = ' '.join(str(i) for i in mylist)\n            break\nprint(out)\n'''], 
+    ['''n, m = map(int, input().split())\nmydiv = n // m\nmymod = n % m\nmylist = [ mydiv for _ in range(m) ]\nif  mymod == 0 :\n    out = ' '.join(str(i) for i in mylist)\nelse :\n    for i in mylist :\n        mylist[mylist.index(i)] += 1\n        mymod -= 1\n        if mymod == 0 :\n            out = ' '.join(str(i) for i in mylist)\n            break\nprint(out)\n''', 
      ["12 3", "15 4", "18 7"],
      ["4 4 4", "3 4 4 4", "2 2 2 3 3 3 3"]] 
 ]
@@ -97,6 +98,8 @@ if __name__ == '__main__':
 
     # Wait for the process tracking thread to finish
     # tracking_thread.join()
+
+    command_to_run_code = ['python', '-c']
 
     with concurrent.futures.ProcessPoolExecutor() as executor:
         # Submit each command separately to the executor with a 2-second timeout for the command execution
