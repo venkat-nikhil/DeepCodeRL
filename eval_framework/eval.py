@@ -3,6 +3,7 @@ import concurrent.futures
 import os
 from typing import Tuple
 import psutil
+import shutil
 import threading
 import time
 
@@ -15,9 +16,17 @@ env['MY_VAR'] = 'some_value'
 
 # Function to run a subprocess (for demonstration purposes)
 def run_subprocess(command, input_data=None, timeout=5.0):
+    # print(f"Running command: {command}")
+    
     try:
-        # Run the command with the specified timeout and input data
-        result = subprocess.run(command, input=input_data, capture_output=True, text=True, env=env, timeout=timeout)
+        result = subprocess.run(
+            command,
+            input=input_data,
+            capture_output=True,
+            text=True,
+            env=None,
+            timeout=timeout
+        )
         return result
     except subprocess.TimeoutExpired:
         return f"Command {command} timed out after {timeout} seconds"
@@ -46,7 +55,7 @@ def check_output(command, input=None, expected_output=None, timeout=5.0) -> Tupl
 
 def test_code_with_outputs(code_with_tests, timeout=5.0):
     results = []
-    command = code_with_tests[0]
+    command = ["python", "-c",code_with_tests[0]]
     input_tests = code_with_tests[1]
     expected_output_tests = code_with_tests[2]
 
@@ -88,6 +97,69 @@ test_inputs  = [
      ["4 4 4", "3 4 4 4", "2 2 2 3 3 3 3"]] 
 ]
 
+class MultiProcessorEvaluator:
+    def __init__(self,
+                 command_prefix=None,
+                 max_workers=None,
+                 timeout=5.0,
+                 env=None):
+        """
+        :param command_prefix: list, e.g. ['python', '-c'] or None to use sys.executable
+        :param max_workers: int, number of parallel worker processes (None == os.cpu_count())
+        :param timeout: float, per‑process timeout in seconds
+        :param env: dict, environment variables for subprocess (None==inherit)
+        """
+        if command_prefix is None:
+            # default to this Python interpreter
+            command_prefix = [sys.executable, "-c"]
+        # If user passed ['python','-c'], replace with full path
+        # if command_prefix[0].lower() == "python":
+        #     command_prefix[0] = sys.executable
+
+        self.command_prefix = command_prefix
+        self.max_workers = max_workers
+        self.timeout = timeout
+        self.env = env  # if None, subprocess.run will inherit os.environ
+
+    def _worker(self,code_with_tests, timeout=5.0):
+        results = []
+        command = self.command_prefix
+        command.append(code_with_tests[0])
+        input_tests = code_with_tests[1]
+        expected_output_tests = code_with_tests[2]
+
+        if input_tests is None:
+            if expected_output_tests is None:
+                check, logger_str = check_output(command, timeout=timeout)
+                results.append([check, logger_str])
+            else:
+                for expected_output in expected_output_tests:
+                    check, logger_str = check_output(command, expected_output=expected_output, timeout=timeout)
+                    results.append([check, logger_str])
+        else:
+            if len(input_tests) != len(expected_output_tests):
+                results.append([False, number_of_tests_mismatch_err])
+            else:
+                for input_test, expected_output in zip(input_tests, expected_output_tests):
+                    check, logger_str = check_output(command, input=input_test, expected_output=expected_output, timeout=timeout)
+                    results.append([check, logger_str])
+
+        return results
+
+    def run(self, all_tests):
+        """
+        :param all_tests: list of (command, input_tests, expected_tests) tuples
+        :returns: list of results, in the same order
+        """
+        results = []
+        if self.max_workers is None:
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                results = list(executor.map(self._worker, all_tests))
+        else:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+                results = list(executor.map(self._worker, all_tests))
+        return results
+
 if __name__ == '__main__':
     # Instantiate the ProcessTracker
     # tracker = ProcessTracker()
@@ -101,9 +173,14 @@ if __name__ == '__main__':
 
     command_to_run_code = ['python', '-c']
 
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        # Submit each command separately to the executor with a 2-second timeout for the command execution
-        results = list(executor.map(test_code_with_outputs, test_inputs))  # 2 is the timeout value for each command
+    # with concurrent.futures.ProcessPoolExecutor() as executor:
+    #     results = list(executor.map(test_code_with_outputs, test_inputs))
+    tester = MultiProcessorEvaluator(
+        command_prefix=['python','-c'],  # or None to auto‑use sys.executable
+        max_workers=1,
+        timeout=2.0
+    )
+    results = tester.run(test_inputs)
 
     # Output the results of each subprocess
     print(f'Number of child processes created: {len(results)}\n')

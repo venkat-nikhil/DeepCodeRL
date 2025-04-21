@@ -31,11 +31,12 @@ command = ['python', '-c', '''n, m = map(int, input().split())\nmydiv = n // m\n
 # print(out)
 # '''
 # ]
-input_data = "12 3"
-env = os.environ.copy()
+if __name__ == '__main__':
+    input_data = "12 3"
+    env = os.environ.copy()
 
-result = subprocess.run(command, input=input_data, capture_output=True, text=True, env=env)
-print(f"STDOUT: {result.stdout.strip()}\nSTDERR: {result.stderr.strip()}")
+    result = subprocess.run(command, input=input_data, capture_output=True, text=True, env=env)
+    print(f"STDOUT: {result.stdout.strip()}\nSTDERR: {result.stderr.strip()}")
 
 
 # Create a temporary Python file with the code
