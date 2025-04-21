@@ -16,3 +16,6 @@ python main.py --run_sft --run_initial_rl --batch_size 4 --gradient_accumulation
 // run only initial_rl stage
 
 python main.py --run_initial_rl --sft_model_path output/sft/final_model/  --batch_size 1 --gradient_accumulation_steps 32 --max_length 512 --use_fp16 --use_8bit --gradient_checkpointing --use_lora
+
+
+python main.py --run_initial_rl --sft_model_path output/sft/final_model/  --batch_size 8 --gradient_accumulation_steps 32 --max_length 1024  --num_epochs 1
