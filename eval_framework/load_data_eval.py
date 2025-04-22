@@ -1,8 +1,9 @@
 import json
 from datasets import Dataset
+from eval_framework.eval import MultiProcessorEvaluator
 
 class CustomDataset:
-    def __init__(self, json_data, batch_size=2):
+    def __init__(self, json_data, batch_size=2, id_column = 'id', examples_column = 'examples', accepted_solution_column = 'accepted_solutions'):
         """
         Initialize the dataset with a list of JSON objects.
         - json_data: List of dictionaries containing 'id', 'examples', and 'accepted_solutions'.
@@ -11,6 +12,9 @@ class CustomDataset:
         self.data = json_data
         self.batch_size = batch_size
         self.num_batches = len(self.data) // self.batch_size + (1 if len(self.data) % self.batch_size != 0 else 0)
+        self.id_column = id_column
+        self.examples_column = examples_column
+        self.accepted_solution_column = accepted_solution_column
 
     def __getitem__(self, index):
         """
@@ -24,9 +28,9 @@ class CustomDataset:
         end_idx = start_idx + self.batch_size
         batch_data = self.data[start_idx:end_idx]
         
-        ids = [item['id'] for item in batch_data]
-        examples = [item['examples'] for item in batch_data]  # keeping examples as lists of dictionaries
-        accepted_solution = [item['accepted_solutions'] for item in batch_data]
+        ids = [item[self.id_column] for item in batch_data]
+        examples = [item[self.examples_column] for item in batch_data]  # keeping examples as lists of dictionaries
+        accepted_solution = [item[self.accepted_solution_column] for item in batch_data]
         
         return {
             'ids': ids,
@@ -70,20 +74,38 @@ if __name__ == "__main__":
     batch_size = 2
     dataset = CustomDataset(json_data, batch_size)
 
+    tester = MultiProcessorEvaluator(
+        command_prefix=['python','-c'],  # or None to auto‑use sys.executable
+        max_workers=1,
+        timeout=2.0
+    )
+    results_in_ratios = []
     # Access and print the batches with ids, examples, and accepted solutions
     for idx in range(len(dataset)):
         batch = dataset[idx]
         print(f"Batch {idx + 1}:")
-        
+        test_data_batch = []
         # Iterate over the ids, examples, and accepted solutions together using zip
         for id_val, example, solution in zip(batch['ids'], batch['examples'], batch['accepted_solution']):
-            print(f"ID: {id_val}")
-            print(f"Examples: {example}")
-            print(f"Accepted Solution: {solution}")
-            print()  # Newline for readability
-            break
-        print("Parsed Tests:")
-        parsed_tests = parse_code_batch_to_individual_tests(batch)
-        for test in parsed_tests:
-            print(f"ID: {test[0]}\nCode: {test[1]}\nInput: {test[2]}\nOutput: {test[3]}\n\n")
+            # print(f"ID: {type(id_val)}")
+            # print(f"Examples: {type(example)}")
+            # print(f"Accepted Solution: {type(solution)}")
+            generated_code = solution
+            inputs = []
+            outputs = []
+            for ex in example:
+                inputs.append(ex.get("input", ""))
+                outputs.append(ex.get("output", ""))
+            # print(f"Inputs: {inputs}")
+            # print(f"Outputs: {outputs}")
+            test_data_batch.append([solution, inputs, outputs])
+        # print(test_data_batch)
+            results = tester.run(test_data_batch)
+            results_in_ratios.append(tester.get_batch_run_scores(results))
+
+        # print("Parsed Tests:")
+        # parsed_tests = parse_code_batch_to_individual_tests(batch)
+        # for test in parsed_tests:
+        #     print(f"ID: {test[0]}\nCode: {test[1]}\nInput: {test[2]}\nOutput: {test[3]}\n\n")
         break
+    print(f"Results in Ratios:{results_in_ratios}")

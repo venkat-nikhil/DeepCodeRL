@@ -160,6 +160,17 @@ class MultiProcessorEvaluator:
             with concurrent.futures.ProcessPoolExecutor(max_workers=self.max_workers) as executor:
                 results = list(executor.map(self._worker, all_tests))
         return results
+    
+    def get_batch_run_scores(self, batch_results):
+        """
+        :param batch_results: list of results from the run method
+        :returns: list of scores for each batch
+        """
+        scores = []
+        for result in batch_results:
+            score = sum(1 for check, _ in result if check) / len(result)
+            scores.append(score)
+        return scores
 
 if __name__ == '__main__':
     # Instantiate the ProcessTracker
@@ -188,10 +199,10 @@ if __name__ == '__main__':
     total_subprocs = 0
     for result_execs in results:
         total_subprocs += len(result_execs)
-        for result in result_execs:
-            check, logger_str = result
+        for check, logger_str in result_execs:
             print(f"Code execution result: {check}")
             print(logger_str)
     print(f'Total number of subprocesses created: {total_subprocs}\n')
+    print(f'Batch scores are: {tester.get_batch_run_scores(results)}\n')
     # Print the number of subprocesses created during the execution
     # print(f"Total number of subprocesses created (child + grandchildren): {tracker.get_subprocesses_created()}")
