@@ -13,6 +13,7 @@ from transformers import (
 import ast
 from tqdm import tqdm
 from typing import Dict, List, Optional, Tuple, Union
+from eval_framework.eval import *
 
 # Set up logging
 logging.basicConfig(
@@ -40,6 +41,8 @@ def check_syntax_validity(code: str) -> float:
     except Exception as e:
         logger.warning(f"Error parsing code: {e}")
         return 0.0  # Penalty for other errors
+
+
 
 class RLCodeDataset(Dataset):
     """
@@ -122,7 +125,17 @@ def calculate_reward(generated_code: str) -> float:
     Returns:
         float: Reward value
     """
-    return check_syntax_validity(generated_code)
+    
+    # return check_syntax_validity(generated_code)
+
+    tester = MultiProcessorEvaluator(
+        command_prefix=['python','-c'],  # or None to auto‑use sys.executable
+        max_workers=1,
+        timeout=2.0
+    )
+    test_inputs = [[generated_code, [""], [""]]]
+    results = tester.run(test_inputs)
+    return float(results[0])
 
 def train_rl(args):
     """
