@@ -72,12 +72,12 @@ if __name__ == "__main__":
     json_data = load_json_data(file_path)  # This should return a list of dictionaries
 
     # Initialize the custom dataset with a chosen batch size
-    batch_size = 2
+    batch_size = 4
     dataset = CustomDataset(json_data, batch_size)
 
     tester = MultiProcessorEvaluator(
         command_prefix=['python','-c'],  # or None to auto‑use sys.executable
-        max_workers=1,
+        max_workers=2,
         timeout=2.0
     )
     results_in_ratios = []
@@ -96,9 +96,10 @@ if __name__ == "__main__":
             generated_code = solution
             inputs = []
             outputs = []
-            for ex in example:
-                inputs.append(ex.get("input", ""))
-                outputs.append(ex.get("output", ""))
+            if example is not None:
+                for ex in example:
+                    inputs.append(ex.get("input", ""))
+                    outputs.append(ex.get("output", ""))
             # print(f"Inputs: {inputs}")
             # print(f"Outputs: {outputs}")
             test_data_batch.append([solution, inputs, outputs])
@@ -110,6 +111,7 @@ if __name__ == "__main__":
         #     results_in_ratios.append(score)
         batch_scores = tester.get_batch_run_scores(results)
         results_in_ratios.append(sum(batch_scores) / len(batch_scores))
+        print(f"score: {sum(batch_scores) / len(batch_scores)}")
         # print("Parsed Tests:")
         # parsed_tests = parse_code_batch_to_individual_tests(batch)
         # for test in parsed_tests:

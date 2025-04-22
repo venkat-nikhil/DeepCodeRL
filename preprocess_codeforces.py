@@ -206,7 +206,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Preprocess JSON dataset for DeepCodeRL")
-    parser.add_argument("--json_path", type=str, required=True, 
+    parser.add_argument("--json_path", type=str, required=True,
                       help="Path to JSON dataset file")
     parser.add_argument("--output_dir", type=str, default="data/processed/", 
                       help="Directory to save processed data")
