@@ -127,7 +127,6 @@ def calculate_reward(generated_code: str, examples: List[Dict[str, str]]) -> flo
     Returns:
         float: Reward value
     """
-    
     # return check_syntax_validity(generated_code)
 
     test_inputs = []
