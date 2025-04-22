@@ -151,10 +151,13 @@ def preprocess_json_dataset(
         
         # Use editorial as explanation
         explanation = editorial if editorial else "No editorial explanation available."
+
+        test_examples = record.get('examples', []) if record.get('examples') else []
         
         processed_data.append({
             "id": problem_id,
             "problem": problem_description,
+            "examples": test_examples,
             "solution": solution_code,
             "explanation": explanation
         })
