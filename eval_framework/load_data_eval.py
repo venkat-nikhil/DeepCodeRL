@@ -1,3 +1,4 @@
+import time
 import json
 from datasets import Dataset
 from eval_framework.eval import MultiProcessorEvaluator
@@ -71,15 +72,17 @@ if __name__ == "__main__":
     json_data = load_json_data(file_path)  # This should return a list of dictionaries
 
     # Initialize the custom dataset with a chosen batch size
-    batch_size = 2
+    batch_size = 4
     dataset = CustomDataset(json_data, batch_size)
 
     tester = MultiProcessorEvaluator(
         command_prefix=['python','-c'],  # or None to auto‑use sys.executable
-        max_workers=1,
+        max_workers=2,
         timeout=2.0
     )
     results_in_ratios = []
+    start_time = time.time()
+
     # Access and print the batches with ids, examples, and accepted solutions
     for idx in range(len(dataset)):
         batch = dataset[idx]
@@ -93,19 +96,27 @@ if __name__ == "__main__":
             generated_code = solution
             inputs = []
             outputs = []
-            for ex in example:
-                inputs.append(ex.get("input", ""))
-                outputs.append(ex.get("output", ""))
+            if example is not None:
+                for ex in example:
+                    inputs.append(ex.get("input", ""))
+                    outputs.append(ex.get("output", ""))
             # print(f"Inputs: {inputs}")
             # print(f"Outputs: {outputs}")
             test_data_batch.append([solution, inputs, outputs])
-        # print(test_data_batch)
-            results = tester.run(test_data_batch)
-            results_in_ratios.append(tester.get_batch_run_scores(results))
 
+
+        # print(test_data_batch)
+        results = tester.run(test_data_batch)
+        # for score in tester.get_batch_run_scores(results):
+        #     results_in_ratios.append(score)
+        batch_scores = tester.get_batch_run_scores(results)
+        results_in_ratios.append(sum(batch_scores) / len(batch_scores))
+        print(f"score: {sum(batch_scores) / len(batch_scores)}")
         # print("Parsed Tests:")
         # parsed_tests = parse_code_batch_to_individual_tests(batch)
         # for test in parsed_tests:
         #     print(f"ID: {test[0]}\nCode: {test[1]}\nInput: {test[2]}\nOutput: {test[3]}\n\n")
-        break
-    print(f"Results in Ratios:{results_in_ratios}")
+        
+    print(f"Total time taken: {time.time() - start_time} seconds")
+    print(f"Results in Ratios for batches:{results_in_ratios}")
+    print(f"Average Ratio: {sum(results_in_ratios) / len(results_in_ratios)}")
