@@ -189,3 +189,5 @@ test.py
 tmp.py
 
 test_original.py
+
+logs/
