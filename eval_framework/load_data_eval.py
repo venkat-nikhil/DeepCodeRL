@@ -43,12 +43,12 @@ def load_json_data(file_path):
     with open(file_path, 'r', encoding='utf-8') as file:
         return json.load(file)
 
-def parse_code_batch_to_individual_tests(code_batch):
+def parse_code_batch_to_individual_tests(code_batch, solution_column_name="accepted_solution", examples_column_name="examples"):
     # This function is a placeholder for the actual implementation that would parse the code batch
     final_tests = []
     ids = code_batch.get("ids", [])
-    accepted_codes = code_batch.get("accepted_solution", [])
-    all_examples = code_batch.get("examples", [])
+    accepted_codes = code_batch.get(solution_column_name, [])
+    all_examples = code_batch.get(examples_column_name, [])
     
     # Iterate over each problem in the batch.
     # We assume the lists are aligned: ids[i], accepted_codes[i], and all_examples[i] belong together.
@@ -63,7 +63,7 @@ def parse_code_batch_to_individual_tests(code_batch):
 
 if __name__ == "__main__":
     # Load the JSON data (ensure the JSON file contains objects with 'id', 'examples', and 'accepted_solutions')
-    file_path = 'data/cleaned_datasets/train.json'
+    file_path = 'data/cleaned_datasets/filtered_solutions_py_decontaminated_final.json'
     json_data = load_json_data(file_path)  # This should return a list of dictionaries
 
     # Initialize the custom dataset with a chosen batch size
@@ -81,6 +81,7 @@ if __name__ == "__main__":
             print(f"Examples: {example}")
             print(f"Accepted Solution: {solution}")
             print()  # Newline for readability
+            break
         print("Parsed Tests:")
         parsed_tests = parse_code_batch_to_individual_tests(batch)
         for test in parsed_tests:
