@@ -14,6 +14,7 @@ import ast
 from tqdm import tqdm
 from typing import Dict, List, Optional, Tuple, Union
 from eval_framework.eval import *
+from parser import scrape_and_run_code
 
 # Set up logging
 logging.basicConfig(
@@ -112,9 +113,10 @@ class RLCodeDataset(Dataset):
             "problem_text": problem_text,
             "full_prompt": full_prompt,
             "reference_solution": item["solution"],  # Reference solution for debugging
+            "examples": item["examples"]
         }
 
-def calculate_reward(generated_code: str) -> float:
+def calculate_reward(generated_code: str, examples: List[Dict[str, str]]) -> float:
     """
     Calculate reward for the generated code.
     
@@ -124,31 +126,19 @@ def calculate_reward(generated_code: str) -> float:
     Returns:
         float: Reward value
     """
-    try:
-        # First check syntax validity as a basic reward
-        syntax_valid = check_syntax_validity(generated_code)
-        
-        if syntax_valid <= 0:
-            return 0.0  # If syntax is invalid, return 0 immediately
-        
-        # If we have a MultiProcessorEvaluator, use it for more thorough checking
-        try:
-            tester = MultiProcessorEvaluator(
-                command_prefix=['python','-c'],  # or None to auto‑use sys.executable
-                max_workers=1,
-                timeout=2.0
-            )
-            test_inputs = [[generated_code, [""], [""]]]
-            results = tester.run(test_inputs)
-            reward = float(results[0]) if results and results[0] is not None else 0.0
-            return max(0.0, reward)  # Ensure reward is non-negative
-        except Exception as e:
-            logger.warning(f"Error in MultiProcessorEvaluator: {e}")
-            # Fall back to syntax validity if tester fails
-            return syntax_valid
-    except Exception as e:
-        logger.warning(f"Error calculating reward: {e}")
-        return 0.0  # Return default reward on error
+    # return check_syntax_validity(generated_code)
+
+    test_inputs = []
+    test_inputs.append(scrape_and_run_code(text=generated_code, examples=examples))
+
+    tester = MultiProcessorEvaluator(
+        command_prefix=['python','-c'],  # or None to auto‑use sys.executable
+        max_workers=1,
+        timeout=2.0
+    )
+    results = tester.run(test_inputs)
+    reward = float(results[0]) if results and results[0] is not None else 0.0
+    return max(0.0, reward)
 
 def train_rl(args):
     """
@@ -278,6 +268,7 @@ def train_rl(args):
             
             input_ids = batch["input_ids"]
             attention_mask = batch["attention_mask"]
+            batch_examples = batch["examples"]
             
             # STEP 1: Generate code using the current model
             with torch.no_grad():
@@ -315,7 +306,7 @@ def train_rl(args):
                     generated_code = tokenizer.decode(generated_tokens, skip_special_tokens=True)
                     
                     # Calculate reward (syntax validity)
-                    reward = calculate_reward(generated_code)
+                    reward = calculate_reward(generated_code, examples=batch_examples)
                     rewards.append(reward)
                     
                     # Get problem ID and truncated prompt for logging
