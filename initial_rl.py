@@ -119,7 +119,6 @@ class RLCodeDataset(Dataset):
 def calculate_reward(generated_code: str, examples: List[Dict[str, str]]) -> float:
     """
     Calculate reward for the generated code.
-    Currently just checks syntax validity, but can be extended.
     
     Args:
         generated_code: The generated Python code
@@ -127,11 +126,9 @@ def calculate_reward(generated_code: str, examples: List[Dict[str, str]]) -> flo
     Returns:
         float: Reward value
     """
-    # return check_syntax_validity(generated_code)
-
     test_inputs = []
     test_inputs.append(scrape_and_run_code(text=generated_code, examples=examples))
-
+ 
     tester = MultiProcessorEvaluator(
         command_prefix=['python','-c'],  # or None to auto‑use sys.executable
         max_workers=1,
@@ -162,7 +159,7 @@ def train_rl(args):
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
         args.sft_model_path if args.sft_model_path else args.model_name,
-        padding_side="right",
+        padding_side="left",  # Set to left padding for decoder-only models
         use_fast=True,
     )
     
@@ -173,9 +170,15 @@ def train_rl(args):
     # Load model with memory optimizations
     logger.info(f"Loading model from: {args.sft_model_path if args.sft_model_path else args.model_name}")
     
-    # Configure model loading parameters
+    # Configure model loading parameters with added FP16 stability
+    if hasattr(args, 'use_fp16') and args.use_fp16:
+        logger.info("Using FP16 mixed precision with added stability measures")
+        torch_dtype = torch.float16
+    else:
+        torch_dtype = torch.float32
+        
     model_kwargs = {
-        "torch_dtype": torch.float16 if hasattr(args, 'use_fp16') and args.use_fp16 else torch.float32,
+        "torch_dtype": torch_dtype,
         "device_map": "auto" if torch.cuda.is_available() else None,
     }
     
@@ -193,6 +196,10 @@ def train_rl(args):
         **model_kwargs,
     )
     
+    # Ensure all parameters are trainable
+    for param in model.parameters():
+        param.requires_grad = True
+    
     # Enable gradient checkpointing for memory efficiency if specified
     if hasattr(args, 'gradient_checkpointing') and args.gradient_checkpointing:
         logger.info("Enabling gradient checkpointing")
@@ -209,7 +216,7 @@ def train_rl(args):
     )
     
     # Create dataloader
-    batch_size = min(args.batch_size, 2)  # Use smaller batch size for RL to conserve memory
+    batch_size = args.batch_size  # Use smaller batch size for RL to conserve memory
     num_workers = args.num_workers if hasattr(args, 'num_workers') else 0
     
     logger.info(f"Using batch size of {batch_size} for RL training")
@@ -229,6 +236,9 @@ def train_rl(args):
         lr=learning_rate,
         weight_decay=weight_decay,
     )
+    
+    # Ensure logs directory exists
+    os.makedirs("logs", exist_ok=True)
     
     # Training loop
     logger.info("Starting RL training phase with reduced context...")
@@ -260,22 +270,31 @@ def train_rl(args):
             
             # STEP 1: Generate code using the current model
             with torch.no_grad():
-                # Generate code completions
+                # Generate code completions with safer parameters for FP16
                 outputs = model.generate(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     max_new_tokens=max_new_tokens,
                     do_sample=True,
                     top_p=0.95,
-                    temperature=0.7,
+                    top_k=50,  # Add top_k to prevent extreme probabilities
+                    temperature=0.8,  # Slightly higher temperature for more stable sampling
                     return_dict_in_generate=True,
                     output_scores=True,
+                    min_length=5,  # Set minimum length to avoid empty generations
+                    bad_words_ids=None,
+                    num_return_sequences=1  # Ensure we get exactly one sequence per input
                 )
                 
                 generated_sequences = outputs.sequences
                 
                 # Calculate rewards for the generated code
                 rewards = []
+                
+                # Open log file for current epoch to save generated code
+                log_filename = f"logs/model-output-epoch-{epoch+1}.txt"
+                log_file = open(log_filename, "a", encoding="utf-8")
+                
                 for i, sequence in enumerate(generated_sequences):
                     # Find where the input ends
                     input_length = input_ids[i % input_ids.size(0)].size(0)
@@ -287,16 +306,44 @@ def train_rl(args):
                     # Calculate reward (syntax validity)
                     reward = calculate_reward(generated_code, examples=batch_examples)
                     rewards.append(reward)
+                    
+                    # Get problem ID and truncated prompt for logging
+                    batch_idx = i % input_ids.size(0)
+                    problem_id = batch["problem_id"][batch_idx] if "problem_id" in batch else f"problem_{total_steps}_{i}"
+                    problem_text = batch["problem_text"][batch_idx] if "problem_text" in batch else "Unknown problem"
+                    prompt_text = batch["full_prompt"][batch_idx] if "full_prompt" in batch else "Unknown prompt"
+                    
+                    # Truncate problem text for readability in logs
+                    problem_text_short = problem_text[:200] + "..." if len(problem_text) > 200 else problem_text
+                    
+                    # Write to log file immediately with flush to ensure real-time logging
+                    log_file.write(f"===== SAMPLE {total_steps}_{i} =====\n")
+                    log_file.write(f"PROBLEM ID: {problem_id}\n")
+                    log_file.write(f"PROBLEM TEXT: {problem_text_short}\n")
+                    log_file.write(f"FULL PROMPT: {prompt_text}\n")
+                    log_file.write(f"GENERATED CODE:\n{generated_code}\n")
+                    log_file.write(f"REWARD: {reward}\n")
+                    log_file.write("="*50 + "\n\n")
+                    log_file.flush()  # Ensure immediate write to disk
+                
+                # Close log file
+                log_file.close()
                 
                 # Convert rewards to tensor
                 rewards = torch.tensor(rewards, device=model.device)
             
             # STEP 2: Compute REINFORCE loss
-            loss = 0.0
+            loss = torch.tensor(0.0, device=model.device, requires_grad=True)
+            valid_sequences = 0
+            
             for i, sequence in enumerate(generated_sequences):
-                # Skip sequences with zero reward (no learning signal)
-                if rewards[i] == 0.0:
+                # Skip sequences with zero reward or too small reward (no learning signal)
+                # Higher threshold for FP16 to avoid numerical instability
+                min_reward_threshold = 0.01 if torch_dtype == torch.float16 else 0.0
+                if rewards[i] <= min_reward_threshold:
                     continue
+                
+                valid_sequences += 1
                 
                 # Get input length
                 input_length = input_ids[i % input_ids.size(0)].size(0)
@@ -318,30 +365,52 @@ def train_rl(args):
                 # Get logits for the generated part (shifted to align)
                 logits_for_generated = logits[:, input_length-1:-1]
                 
-                # Compute log probabilities
-                log_probs = torch.nn.functional.log_softmax(logits_for_generated, dim=-1)
+                # FP16-safe log probability computation
+                # Add a small epsilon to prevent numerical instability
+                epsilon = 1e-8 if torch_dtype == torch.float16 else 1e-10
+                
+                # Apply log softmax with stability clipping
+                logits_for_generated_stable = logits_for_generated
+                
+                # Add epsilon before log_softmax to prevent -inf values
+                log_probs = torch.nn.functional.log_softmax(logits_for_generated_stable, dim=-1)
+                
+                # Replace any potential NaN or Inf values for safety
+                log_probs = torch.nan_to_num(log_probs, nan=-100.0, posinf=-100.0, neginf=-100.0)
                 
                 # Get the log probability of the tokens that were actually generated
+                # Ensure index is valid
+                max_length = min(generated_part.size(1), logits_for_generated.size(1))
+                valid_generated_part = generated_part[:, :max_length].unsqueeze(-1)
+                
                 log_prob_generated = torch.gather(
-                    log_probs,
+                    log_probs[:, :max_length],
                     dim=-1,
-                    index=generated_part[:, :logits_for_generated.size(1)].unsqueeze(-1)
+                    index=valid_generated_part
                 ).squeeze(-1)
+                
+                # Clip extreme negative values to prevent numerical instability
+                log_prob_generated = torch.clamp(log_prob_generated, min=-100.0, max=0.0)
                 
                 # Sum log probs to get sequence log probability
                 seq_log_prob = log_prob_generated.sum()
                 
+                # Convert reward to tensor with proper device
+                reward_tensor = rewards[i].clone().detach()
+                
                 # Compute policy gradient loss: negative log probability times reward
                 # (Negative because we're doing gradient descent but want to maximize reward)
-                batch_loss = -seq_log_prob * rewards[i]
-                loss += batch_loss
+                sequence_loss = -seq_log_prob * reward_tensor
+                loss = loss + sequence_loss
             
-            # Normalize loss by batch size
-            if loss > 0:  # Only if we have at least one valid sequence
-                loss = loss / input_ids.size(0)
+            # Normalize loss by the number of valid sequences
+            if valid_sequences > 0:
+                loss = loss / valid_sequences
                 
-                # Backpropagation
+                # Reset gradients
                 optimizer.zero_grad()
+                
+                # Backpropagation - make sure loss requires grad
                 loss.backward()
                 
                 # Gradient clipping to prevent exploding gradients
@@ -354,13 +423,16 @@ def train_rl(args):
                 epoch_loss += loss.item()
                 epoch_reward += rewards.mean().item()
                 num_batches += 1
+            else:
+                logger.warning("No valid sequences in batch - skipping update")
             
             # Update progress bar
             total_steps += 1
-            avg_reward = epoch_reward / (num_batches + 1e-8)
+            avg_reward = epoch_reward / max(num_batches, 1)
             progress_bar.set_postfix({
-                "loss": epoch_loss / (num_batches + 1e-8),
-                "reward": avg_reward
+                "loss": epoch_loss / max(num_batches, 1),
+                "reward": avg_reward,
+                "valid_seqs": valid_sequences
             })
             
             # Periodically save checkpoint
@@ -372,8 +444,8 @@ def train_rl(args):
                 logger.info(f"Saved checkpoint to {checkpoint_path}")
         
         # End of epoch logging
-        avg_epoch_loss = epoch_loss / (num_batches + 1e-8)
-        avg_epoch_reward = epoch_reward / (num_batches + 1e-8)
+        avg_epoch_loss = epoch_loss / max(num_batches, 1)
+        avg_epoch_reward = epoch_reward / max(num_batches, 1)
         logger.info(f"Epoch {epoch+1}/{num_epochs} - Loss: {avg_epoch_loss:.4f}, Reward: {avg_epoch_reward:.4f}")
         
         # Save model if this is the best epoch so far
