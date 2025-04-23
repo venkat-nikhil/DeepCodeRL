@@ -151,10 +151,13 @@ def preprocess_json_dataset(
         
         # Use editorial as explanation
         explanation = editorial if editorial else "No editorial explanation available."
+
+        test_examples = record.get('examples', []) if record.get('examples') else []
         
         processed_data.append({
             "id": problem_id,
             "problem": problem_description,
+            "examples": test_examples,
             "solution": solution_code,
             "explanation": explanation
         })
@@ -203,7 +206,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Preprocess JSON dataset for DeepCodeRL")
-    parser.add_argument("--json_path", type=str, required=True, 
+    parser.add_argument("--json_path", type=str, required=True,
                       help="Path to JSON dataset file")
     parser.add_argument("--output_dir", type=str, default="data/processed/", 
                       help="Directory to save processed data")

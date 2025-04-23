@@ -90,12 +90,18 @@ commands_with_inputs  = [
 ]
 
 test_inputs  = [
+    ['''n, m = map(int, input().split())\nmydiv = n // m\nmymod = n % m\nmylist = [ mydiv for _ in range(m) ]\nif  mymod == 0 :\n    out = ' '.join(str(i) for i in mylist)\nelse :\n    for i in mylist :\n        mylist[mylist.index(i)] += 1\n        mymod -= 1\n        if mymod == 0 :\n            out = ' '.join(str(i) for i in mylist)\n            break\nprint(out)\n''', 
+     [],
+     []],
     ['''def solve (n,seq) :\r\n    seq.sort()\r\n    start = 1\r\n    moves = 0\r\n    while start <= n :\r\n        if seq[start-1] != start :\r\n            moves += abs(seq[start-1] - start)\r\n        start += 1\r\n        \r\n        \r\n    return moves\r\n    \r\n    \r\nn = int(input())\r\nseq = list(map(int,input().split()))\r\n\r\nprint (solve(n,seq))\r\n\r\n  \r\n        \r\n\r\n    \r\n\r\n\r\n    \r\n   ''', 
      ["2\n3 0", "3\n-1 -1 2"], 
      ["2", "6"]],
     ['''n, m = map(int, input().split())\nmydiv = n // m\nmymod = n % m\nmylist = [ mydiv for _ in range(m) ]\nif  mymod == 0 :\n    out = ' '.join(str(i) for i in mylist)\nelse :\n    for i in mylist :\n        mylist[mylist.index(i)] += 1\n        mymod -= 1\n        if mymod == 0 :\n            out = ' '.join(str(i) for i in mylist)\n            break\nprint(out)\n''', 
      ["12 3", "15 4", "18 7"],
-     ["4 4 4", "3 4 4 4", "2 2 2 3 3 3 3"]] 
+     ["4 4 4", "3 4 4 4", "2 2 2 3 3 3 3"]],
+    ['''n, m = map(int, input().split())\nmydiv = n // m\nmymod = n % m\nmylist = [ mydiv for _ in range(m) ]\nif  mymod == 0 :\n    out = ' '.join(str(i) for i in mylist)\nelse :\n    for i in mylist :\n        mylist[mylist.index(i)] += 1\n        mymod -= 1\n        if mymod == 0 :\n            out = ' '.join(str(i) for i in mylist)\n            break\nprint(out)\n''', 
+     [],
+     []]
 ]
 
 class MultiProcessorEvaluator:
@@ -168,6 +174,9 @@ class MultiProcessorEvaluator:
         """
         scores = []
         for result in batch_results:
+            if len(result) == 0:
+                scores.append(1.0)
+                continue
             score = sum(1 for check, _ in result if check) / len(result)
             scores.append(score)
         return scores
