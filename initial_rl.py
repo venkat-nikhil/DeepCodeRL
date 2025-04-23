@@ -116,53 +116,107 @@ class RLCodeDataset(Dataset):
             "examples": item["examples"]
         }
 
-def calculate_reward(generated_code: str, examples: List[Dict[str, str]]) -> float:
+def custom_collate_fn(batch):
+    """
+    Custom collate function to handle variable-sized examples in batches.
+    """
+    # Extract items that need to be stacked
+    input_ids = torch.stack([item['input_ids'] for item in batch])
+    attention_mask = torch.stack([item['attention_mask'] for item in batch])
+    
+    # Keep non-tensor items as lists without trying to collate them
+    result = {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+        'problem_id': [item['problem_id'] for item in batch],
+        'problem_text': [item['problem_text'] for item in batch],
+        'full_prompt': [item['full_prompt'] for item in batch],
+        'reference_solution': [item['reference_solution'] for item in batch],
+        'examples': [item['examples'] for item in batch]
+    }
+    
+    return result
+
+def calculate_reward(generated_code: str, examples) -> float:
     """
     Calculate reward for the generated code.
     
     Args:
         generated_code: The generated Python code
+        examples: Examples for testing
         
     Returns:
         float: Reward value
     """
-    test_inputs = []
-    test_inputs.append(scrape_and_run_code(text=generated_code, examples=examples))
- 
-    tester = MultiProcessorEvaluator(
-        command_prefix=['python','-c'],  # or None to auto‑use sys.executable
-        max_workers=1,
-        timeout=2.0
-    )
-    results = tester.run(test_inputs)
-    results = tester.get_batch_run_scores(results)
-    results = sum(results) / len(results) if results else 0.0
-    reward = float(results)
-    return max(0.0, reward)
+    try:
+        # Process examples safely to handle different formats from batching
+        valid_examples = []
+        if isinstance(examples, list):
+            # First, check if the list itself contains valid examples
+            if examples and isinstance(examples[0], dict) and ('input' in examples[0] or 'output' in examples[0]):
+                valid_examples = examples
+            else:
+                # Examples might be a nested structure from batching
+                for ex in examples:
+                    if isinstance(ex, dict) and ('input' in ex or 'output' in ex):
+                        valid_examples.append(ex)
+                    elif isinstance(ex, list) and ex:
+                        # If we have a list of examples (from batching), take the first batch
+                        if isinstance(ex[0], dict):
+                            valid_examples.extend([e for e in ex if isinstance(e, dict) and ('input' in e or 'output' in e)])
+                        break
+        elif isinstance(examples, dict):
+            valid_examples = [examples]
+            
+        if not valid_examples:
+            logger.warning("No valid examples found for reward calculation")
+            return 0.0
+            
+        test_inputs = []
+        test_input = scrape_and_run_code(text=generated_code, examples=valid_examples)
+        test_inputs.append(test_input)
+        
+        tester = MultiProcessorEvaluator(
+            command_prefix=['python','-c'],
+            max_workers=1,
+            timeout=2.0
+        )
+        results = tester.run(test_inputs)
+        
+        # Process results directly instead of using get_batch_run_scores
+        if not results:
+            return 0.0
+            
+        # Handle different possible result formats
+        try:
+            if isinstance(results[0], list):
+                # If results is a list of lists
+                flat_results = results[0]
+                if all(isinstance(item, bool) for item in flat_results):
+                    score = sum(flat_results) / len(flat_results) if flat_results else 0.0
+                else:
+                    # Try to extract booleans from tuples or other structures
+                    bools = []
+                    for item in flat_results:
+                        if isinstance(item, bool):
+                            bools.append(item)
+                        elif isinstance(item, tuple) and len(item) > 0 and isinstance(item[0], bool):
+                            bools.append(item[0])
+                    score = sum(bools) / len(bools) if bools else 0.0
+            elif isinstance(results[0], bool):
+                # If results is a list of booleans
+                score = sum(results) / len(results)
+            else:
+                score = 0.0
+        except Exception as e:
+            logger.warning(f"Error processing evaluation results: {e}")
+            score = 0.0
+            
+        return max(0.0, float(score))
+    except Exception as e:
+        logger.warning(f"Error in calculate_reward: {e}")
+        return 0.0
 
-def collate_fn(batch):
-    """Custom collate function to handle variable-sized data."""
-    # Extract common fields that can be stacked
-    input_ids = torch.stack([item["input_ids"] for item in batch])
-    attention_masks = torch.stack([item["attention_mask"] for item in batch])
-    
-    # Get variable fields without stacking
-    problem_ids = [item["problem_id"] for item in batch]
-    problem_texts = [item["problem_text"] for item in batch]
-    full_prompts = [item["full_prompt"] for item in batch]
-    reference_solutions = [item["reference_solution"] for item in batch]
-    examples = [item["examples"] for item in batch]
-    
-    # Return a dictionary with appropriate structures
-    return {
-        "input_ids": input_ids,
-        "attention_mask": attention_masks,
-        "problem_id": problem_ids,
-        "problem_text": problem_texts,
-        "full_prompt": full_prompts,
-        "reference_solution": reference_solutions,
-        "examples": examples
-    }
 
 def train_rl(args):
     """
@@ -220,6 +274,7 @@ def train_rl(args):
     model = AutoModelForCausalLM.from_pretrained(
         args.sft_model_path if args.sft_model_path else args.model_name,
         **model_kwargs,
+        
     )
     
     # Ensure all parameters are trainable
@@ -230,7 +285,6 @@ def train_rl(args):
     if hasattr(args, 'gradient_checkpointing') and args.gradient_checkpointing:
         logger.info("Enabling gradient checkpointing")
         model.gradient_checkpointing_enable()
-    
     # Prepare dataset with reduced context window
     max_length = args.rl_max_length if hasattr(args, 'rl_max_length') else 512
     logger.info(f"Using context window of {max_length} tokens for RL phase")
@@ -251,7 +305,7 @@ def train_rl(args):
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        collate_fn=collate_fn
+        collate_fn=custom_collate_fn
     )
     
     # Set up optimizer
@@ -310,7 +364,8 @@ def train_rl(args):
                     output_scores=True,
                     min_length=5,  # Set minimum length to avoid empty generations
                     bad_words_ids=None,
-                    num_return_sequences=1  # Ensure we get exactly one sequence per input
+                    num_return_sequences=1,  # Ensure we get exactly one sequence per input
+                    # repetition_penalty=1.1
                 )
                 
                 generated_sequences = outputs.sequences
@@ -324,14 +379,18 @@ def train_rl(args):
                 
                 for i, sequence in enumerate(generated_sequences):
                     # Find where the input ends
-                    input_length = input_ids[i % input_ids.size(0)].size(0)
+                    batch_idx = i % input_ids.size(0)
+                    input_length = input_ids[batch_idx].size(0)
                     
                     # Get only the newly generated part
                     generated_tokens = sequence[input_length:]
                     generated_code = tokenizer.decode(generated_tokens, skip_special_tokens=True)
                     
-                    # Calculate reward (syntax validity)
-                    reward = calculate_reward(generated_code, examples=batch_examples[i])
+                    # Get the specific examples for this sequence
+                    sequence_examples = batch_examples[batch_idx] if isinstance(batch_examples, list) else batch_examples
+                    
+                    # Calculate reward
+                    reward = calculate_reward(generated_code, examples=sequence_examples)
                     rewards.append(reward)
                     
                     # Get problem ID and truncated prompt for logging

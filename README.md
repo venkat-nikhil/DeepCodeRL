@@ -20,4 +20,4 @@ python main.py --run_initial_rl --sft_model_path output/sft/final_model/  --batc
 
 python main.py --run_initial_rl --sft_model_path output/sft/final_model/  --batch_size 8 --gradient_accumulation_steps 32 --max_length 1024  --num_epochs 1
 
-python main.py --run_initial_rl --sft_model_path output/sft/final_model/  --batch_size 8 --gradient_accumulation_steps 32 --max_length 16382 --num_epochs 1 --use_fp16
+python main.py --run_initial_rl --sft_model_path output/sft/final_model/  --batch_size 8 --gradient_accumulation_steps 32 --rl_max_length 8192 --num_epochs 1 --use_fp16
