@@ -90,9 +90,20 @@ class RLCodeDataset(Dataset):
         Returns a dictionary containing the tokenized input prompt and other metadata.
         """
         item = self.data[idx]
+
+        system_prompt = """You will be given a competitive programming problem.
+            Analyze the maximum input constraints and identify the optimal algorithmic approach and data structures needed to process the largest possible test cases within the time and memory limits, then explain why your chosen implementation strategy is the most efficient solution. Please reason step by step about your solution approach, then provide a complete implementation in Python 3 that is thoroughly optimized for both speed and memory usage.
+
+            Your solution must read input from standard input (input()), write output to standard output (print()).
+            Do not include any debug prints or additional output.
+
+            Put your final solution within a single code block:
+            ```python
+            <your code here>
+            ```"""
         
         # Get problem description with prefix
-        problem_text = self.problem_prefix + item["problem"]
+        problem_text = system_prompt + self.problem_prefix + item["problem"]
         
         # Get the full prompt for generation
         full_prompt = problem_text + self.solution_prefix
@@ -365,7 +376,7 @@ def train_rl(args):
                     min_length=5,  # Set minimum length to avoid empty generations
                     bad_words_ids=None,
                     num_return_sequences=1,  # Ensure we get exactly one sequence per input
-                    # repetition_penalty=1.1
+                    repetition_penalty=1.1
                 )
                 
                 generated_sequences = outputs.sequences
