@@ -4,10 +4,21 @@ import logging
 import torch
 from typing import Dict, Any, Optional, Tuple
 
+from utils import setup_signal_handlers
+
+import signal
+import sys
+import os
+import logging
+
+# Setup signal handlers at the beginning
+setup_signal_handlers()
+
 # Import necessary functions from individual modules
 from preprocess_codeforces import preprocess_json_dataset
 from SFT import train as sft_train
 from initial_rl import train_rl as rl_train
+
 
 # Set up logging
 logging.basicConfig(
