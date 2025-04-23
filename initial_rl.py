@@ -140,6 +140,30 @@ def calculate_reward(generated_code: str, examples: List[Dict[str, str]]) -> flo
     reward = float(results)
     return max(0.0, reward)
 
+def collate_fn(batch):
+    """Custom collate function to handle variable-sized data."""
+    # Extract common fields that can be stacked
+    input_ids = torch.stack([item["input_ids"] for item in batch])
+    attention_masks = torch.stack([item["attention_mask"] for item in batch])
+    
+    # Get variable fields without stacking
+    problem_ids = [item["problem_id"] for item in batch]
+    problem_texts = [item["problem_text"] for item in batch]
+    full_prompts = [item["full_prompt"] for item in batch]
+    reference_solutions = [item["reference_solution"] for item in batch]
+    examples = [item["examples"] for item in batch]
+    
+    # Return a dictionary with appropriate structures
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_masks,
+        "problem_id": problem_ids,
+        "problem_text": problem_texts,
+        "full_prompt": full_prompts,
+        "reference_solution": reference_solutions,
+        "examples": examples
+    }
+
 def train_rl(args):
     """
     Train the model using a simple REINFORCE algorithm (policy gradient approach).
@@ -227,6 +251,7 @@ def train_rl(args):
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
+        collate_fn=collate_fn
     )
     
     # Set up optimizer
@@ -306,7 +331,7 @@ def train_rl(args):
                     generated_code = tokenizer.decode(generated_tokens, skip_special_tokens=True)
                     
                     # Calculate reward (syntax validity)
-                    reward = calculate_reward(generated_code, examples=batch_examples)
+                    reward = calculate_reward(generated_code, examples=batch_examples[i])
                     rewards.append(reward)
                     
                     # Get problem ID and truncated prompt for logging

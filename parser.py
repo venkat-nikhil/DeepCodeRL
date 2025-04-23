@@ -20,6 +20,8 @@ def scrape_and_run_code(
     outputs = []
 
     # 2. Execute the code for each input
+    print(examples)
+    print(type(examples))
     for ex in examples:
         input_str = output_str = ""
         input_str = ex.get("input", "")
