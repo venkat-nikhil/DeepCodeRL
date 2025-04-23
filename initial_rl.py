@@ -135,7 +135,9 @@ def calculate_reward(generated_code: str, examples: List[Dict[str, str]]) -> flo
         timeout=2.0
     )
     results = tester.run(test_inputs)
-    reward = float(results[0]) if results and results[0] is not None else 0.0
+    results = tester.get_batch_run_scores(results)
+    results = sum(results) / len(results) if results else 0.0
+    reward = float(results)
     return max(0.0, reward)
 
 def train_rl(args):

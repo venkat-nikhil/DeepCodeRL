@@ -131,6 +131,8 @@ class MultiProcessorEvaluator:
     def _worker(self,code_with_tests, timeout=5.0):
         results = []
         command = self.command_prefix
+        if code_with_tests[0] is None or code_with_tests[0] == "":
+            return [False, "Code is empty."]
         command.append(code_with_tests[0])
         input_tests = code_with_tests[1]
         expected_output_tests = code_with_tests[2]
