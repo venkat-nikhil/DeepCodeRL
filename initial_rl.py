@@ -1,3 +1,4 @@
+from utils import termination_requested, save_checkpoint
 import os
 import json
 import logging
@@ -353,6 +354,11 @@ def train_rl(args):
         progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{num_epochs}")
         
         for batch in progress_bar:
+            
+            if termination_requested:
+                logger.info("Training interrupted. Saving checkpoint...")
+                save_checkpoint(model, tokenizer, args.rl_output_dir)
+                return model
             # Move tensors to the right device
             batch = {k: v.to(model.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
             
@@ -553,6 +559,16 @@ def train_rl(args):
             model.save_pretrained(best_model_path)
             tokenizer.save_pretrained(best_model_path)
             logger.info(f"Saved best model with reward {best_reward:.4f} to {best_model_path}")
+            
+        if termination_requested:
+                logger.info("Training interrupted. Saving checkpoint...")
+                # Save checkpoint
+                checkpoint_path = os.path.join(args.rl_output_dir, "interrupted_checkpoint")
+                os.makedirs(checkpoint_path, exist_ok=True)
+                model.save_pretrained(checkpoint_path)
+                tokenizer.save_pretrained(checkpoint_path)
+                logger.info(f"Saved interrupted checkpoint to {checkpoint_path}")
+                return model
     
     # Save final model
     final_model_path = os.path.join(args.rl_output_dir, "final_model")

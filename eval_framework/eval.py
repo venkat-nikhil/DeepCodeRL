@@ -7,6 +7,7 @@ import psutil
 import shutil
 import threading
 import time
+from utils import termination_requested
 
 number_of_tests_mismatch_err = "Input and expected output test cases count mismatch."
 
@@ -155,18 +156,27 @@ class MultiProcessorEvaluator:
 
         return results
 
-    def run(self, all_tests):
-        """
-        :param all_tests: list of (command, input_tests, expected_tests) tuples
-        :returns: list of results, in the same order
-        """
+    def run(self, inputs):
+        # Add termination check in the processing loop
         results = []
-        if self.max_workers is None:
-            with concurrent.futures.ProcessPoolExecutor() as executor:
-                results = list(executor.map(self._worker, all_tests))
-        else:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-                results = list(executor.map(self._worker, all_tests))
+        
+        with concurrent.futures.ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = []
+            for input_data in inputs:
+                if termination_requested:
+                    break
+                futures.append(executor.submit(self._run_test, input_data))
+                
+            for future in concurrent.futures.as_completed(futures):
+                if termination_requested and not future.done():
+                    future.cancel()
+                    continue
+                try:
+                    result = future.result(timeout=self.timeout)
+                    results.append(result)
+                except Exception as e:
+                    logger.warning(f"Test execution failed: {e}")
+                    
         return results
     
     def get_batch_run_scores(self, batch_results):
