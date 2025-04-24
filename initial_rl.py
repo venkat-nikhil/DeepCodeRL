@@ -11,6 +11,7 @@ from transformers import (
     set_seed,
     BitsAndBytesConfig
 )
+from peft import PeftModel, LoraConfig, get_peft_model, TaskType
 import ast
 from tqdm import tqdm
 from typing import Dict, List, Optional, Tuple, Union
@@ -286,15 +287,31 @@ def train_rl(args):
             llm_int8_enable_fp32_cpu_offload=True,  # Enable CPU offloading for modules that don't fit in GPU
         )
     
-    # Load model from SFT phase or pretrained model
-    model = AutoModelForCausalLM.from_pretrained(
-        args.sft_model_path if args.sft_model_path else args.model_name,
-        **model_kwargs,
-    )
+    if hasattr(args, 'use_lora') and args.use_lora:
+        logger.info("Applying LoRA for parameter-efficient fine-tuning")
+        base_model = AutoModelForCausalLM.from_pretrained(
+            args.model_name,  # Original base model name
+            **model_kwargs,
+        )
+
+        # Load existing LoRA weights from SFT
+        model = PeftModel.from_pretrained(
+            base_model, 
+            args.sft_model_path,  # Path to your LoRA checkpoint
+            is_trainable=False,   # Temporarily set to False
+        )
+
+    else:
+        # Load model from SFT phase or pretrained model
+        model = AutoModelForCausalLM.from_pretrained(
+            args.sft_model_path if args.sft_model_path else args.model_name,
+            **model_kwargs,
+        )
     
     # Ensure all parameters are trainable
     for param in model.parameters():
-        param.requires_grad = True
+        if param.requires_grad:
+            param.requires_grad = True
     
     # Enable gradient checkpointing for memory efficiency if specified
     if hasattr(args, 'gradient_checkpointing') and args.gradient_checkpointing:
