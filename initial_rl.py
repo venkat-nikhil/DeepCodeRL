@@ -201,31 +201,9 @@ def calculate_reward(generated_code: str, examples) -> float:
             return 0.0
             
         # Handle different possible result formats
-        try:
-            if isinstance(results[0], list):
-                # If results is a list of lists
-                flat_results = results[0]
-                if all(isinstance(item, bool) for item in flat_results):
-                    score = sum(flat_results) / len(flat_results) if flat_results else 0.0
-                else:
-                    # Try to extract booleans from tuples or other structures
-                    bools = []
-                    for item in flat_results:
-                        if isinstance(item, bool):
-                            bools.append(item)
-                        elif isinstance(item, tuple) and len(item) > 0 and isinstance(item[0], bool):
-                            bools.append(item[0])
-                    score = sum(bools) / len(bools) if bools else 0.0
-            elif isinstance(results[0], bool):
-                # If results is a list of booleans
-                score = sum(results) / len(results)
-            else:
-                score = 0.0
-        except Exception as e:
-            logger.warning(f"Error processing evaluation results: {e}")
-            score = 0.0
+        score = tester.get_batch_run_scores(results)
             
-        return max(0.0, float(score))
+        return max(0.0, float(score[0])), test_inputs, results
     except Exception as e:
         logger.warning(f"Error in calculate_reward: {e}")
         return 0.0
@@ -427,7 +405,7 @@ def train_rl(args):
                     sequence_examples = batch_examples[batch_idx] if isinstance(batch_examples, list) else batch_examples
                     
                     # Calculate reward
-                    reward = calculate_reward(generated_code, examples=sequence_examples)
+                    reward, parser_outputs, eval_outputs = calculate_reward(generated_code, examples=sequence_examples)
                     rewards.append(reward)
                     
                     # Get problem ID and truncated prompt for logging
@@ -445,6 +423,8 @@ def train_rl(args):
                     log_file.write(f"PROBLEM TEXT: {problem_text_short}\n")
                     log_file.write(f"FULL PROMPT: {prompt_text}\n")
                     log_file.write(f"GENERATED CODE:\n{generated_code}\n")
+                    log_file.write(f"PARSER OUTPUT:\n{parser_outputs}\n")
+                    log_file.write(f"EVAL OUTPUT:\n{json.dumps(eval_outputs, indent=2)}\n")
                     log_file.write(f"REWARD: {reward}\n")
                     
                     # log_file.flush()  # Ensure immediate write to disk
