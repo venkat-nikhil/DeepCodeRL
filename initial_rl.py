@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Tuple, Union
 from eval_framework.eval import *
 from parser import scrape_and_run_code
 import wandb
+import time
 
 # Set up logging
 logging.basicConfig(
@@ -239,6 +240,22 @@ def calculate_reward(generated_code: str, examples):
         logger.warning(f"Error in calculate_reward: {e}")
         return 0.0, [[]], [[[]]]
 
+def print_trainable_parameters(model):
+    """
+    Prints the number of trainable parameters in the model.
+    """
+    trainable_params = 0
+    all_params = 0
+    for _, param in model.named_parameters():
+        all_params += param.numel()
+        if param.requires_grad:
+            trainable_params += param.numel()
+    
+    logger.info(
+        f"trainable params: {trainable_params} || all params: {all_params} || "
+        f"trainable%: {100 * trainable_params / all_params:.2f}%"
+    )
+    
 
 def train_rl(args):
     """
@@ -318,6 +335,9 @@ def train_rl(args):
         if param.requires_grad:
             param.requires_grad = True
     
+    # Print all the trainable parameters in the model
+    print_trainable_parameters(model)
+
     # Enable gradient checkpointing for memory efficiency if specified
     if hasattr(args, 'gradient_checkpointing') and args.gradient_checkpointing:
         logger.info("Enabling gradient checkpointing")
@@ -407,8 +427,29 @@ def train_rl(args):
             attention_mask = batch["attention_mask"]
             batch_examples = batch["examples"]
             
+            repetition_penalty = 1.1 if max_new_tokens == 16384 else 1.0
+
+            # Open log file for current epoch to save generated code, create it if not there
+            log_filename = f"logs/model-output-epoch-{epoch+1}.txt"
+            if not os.path.isfile(log_filename):
+                os.makedirs(os.path.dirname(log_filename), exist_ok=True)
+            log_file = open(log_filename, "a", encoding="utf-8")
+            logger.info(f"Opening log file {log_filename}")
+
+            # Get problem ID and truncated prompt for logging
+            batch_idx = i % input_ids.size(0)
+            problem_id = batch["problem_id"][batch_idx] if "problem_id" in batch else f"problem_{total_steps}_{i}"
+            problem_text = batch["problem_text"][batch_idx] if "problem_text" in batch else "Unknown problem"
+            prompt_text = batch["full_prompt"][batch_idx] if "full_prompt" in batch else "Unknown prompt"
+
+            log_file.write(f"===== SAMPLE {total_steps}_{i} =====\n")
+            log_file.write(f"PROBLEM ID: {problem_id}\n")
+            log_file.flush()
+
             # STEP 1: Generate code using the current model
             with torch.no_grad():
+                start_time = time.time()
+                log_file.write(f"Starting generation with max_new_tokens={max_new_tokens}, temp={0.6}")
                 # Generate code completions with safer parameters for FP16
                 outputs = model.generate(
                     input_ids=input_ids,
@@ -423,23 +464,19 @@ def train_rl(args):
                     min_length=5,  # Set minimum length to avoid empty generations
                     bad_words_ids=None,
                     num_return_sequences=1,  # Ensure we get exactly one sequence per input
-                    repetition_penalty=1.1,
+                    repetition_penalty=repetition_penalty,
                     pad_token_id=tokenizer.pad_token_id,  # Ensure this is set
                     eos_token_id=tokenizer.eos_token_id,  # Ensure this is set
                     use_cache=True 
                 )
+                total_time = time.time() - start_time
+                log_file.write(f"Generation completed in {total_time:.2f} seconds\n")
+                log_file.flush()
                 
                 generated_sequences = outputs.sequences
                 
                 # Calculate rewards for the generated code
                 rewards = []
-                
-                # Open log file for current epoch to save generated code, create it if not there
-                log_filename = f"logs/model-output-epoch-{epoch+1}.txt"
-                if not os.path.isfile(log_filename):
-                    os.makedirs(os.path.dirname(log_filename), exist_ok=True)
-                log_file = open(log_filename, "a", encoding="utf-8")
-                logger.info(f"Opening log file {log_filename}")
                 
                 # Calculate avg gen sequence length for logging
                 avg_seq_length = 0
@@ -462,18 +499,10 @@ def train_rl(args):
                     reward, parser_outputs, eval_outputs = calculate_reward(generated_code, examples=sequence_examples)
                     rewards.append(reward)
                     
-                    # Get problem ID and truncated prompt for logging
-                    batch_idx = i % input_ids.size(0)
-                    problem_id = batch["problem_id"][batch_idx] if "problem_id" in batch else f"problem_{total_steps}_{i}"
-                    problem_text = batch["problem_text"][batch_idx] if "problem_text" in batch else "Unknown problem"
-                    prompt_text = batch["full_prompt"][batch_idx] if "full_prompt" in batch else "Unknown prompt"
-                    
                     # Truncate problem text for readability in logs
                     problem_text_short = problem_text[:200] + "..." if len(problem_text) > 200 else problem_text
                     
                     # Write to log file immediately with flush to ensure real-time logging
-                    log_file.write(f"===== SAMPLE {total_steps}_{i} =====\n")
-                    log_file.write(f"PROBLEM ID: {problem_id}\n")
                     log_file.write(f"PROBLEM TEXT: {problem_text_short}\n")
                     log_file.write(f"FULL PROMPT: {prompt_text}\n")
                     log_file.write(f"GENERATED CODE:\n{generated_code}\n")
