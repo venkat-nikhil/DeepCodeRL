@@ -13,7 +13,8 @@ def scrape_and_run_code(
     (code_str, list of inputs, list of outputs)
     """
     # 1. Extract Python code block
-    match = re.search(r"```python\s*(.*?)```", text, flags=re.DOTALL | re.IGNORECASE)
+    # match = re.search(r"```python\s*(.*?)```", text, flags=re.DOTALL | re.IGNORECASE)
+    match = re.search(r"Solution Code\s*```python\s+(.*?)```", text, flags=re.DOTALL | re.IGNORECASE)
     code_str = match.group(1).strip() if match else ""
 
     inputs = []
