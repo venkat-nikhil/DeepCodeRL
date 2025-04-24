@@ -436,16 +436,6 @@ def train_rl(args):
             log_file = open(log_filename, "a", encoding="utf-8")
             logger.info(f"Opening log file {log_filename}")
 
-            # Get problem ID and truncated prompt for logging
-            batch_idx = i % input_ids.size(0)
-            problem_id = batch["problem_id"][batch_idx] if "problem_id" in batch else f"problem_{total_steps}_{i}"
-            problem_text = batch["problem_text"][batch_idx] if "problem_text" in batch else "Unknown problem"
-            prompt_text = batch["full_prompt"][batch_idx] if "full_prompt" in batch else "Unknown prompt"
-
-            log_file.write(f"===== SAMPLE {total_steps}_{i} =====\n")
-            log_file.write(f"PROBLEM ID: {problem_id}\n")
-            log_file.flush()
-
             # STEP 1: Generate code using the current model
             with torch.no_grad():
                 start_time = time.time()
@@ -499,10 +489,18 @@ def train_rl(args):
                     reward, parser_outputs, eval_outputs = calculate_reward(generated_code, examples=sequence_examples)
                     rewards.append(reward)
                     
+                    # Get problem ID and truncated prompt for logging
+                    batch_idx = i % input_ids.size(0)
+                    problem_id = batch["problem_id"][batch_idx] if "problem_id" in batch else f"problem_{total_steps}_{i}"
+                    problem_text = batch["problem_text"][batch_idx] if "problem_text" in batch else "Unknown problem"
+                    prompt_text = batch["full_prompt"][batch_idx] if "full_prompt" in batch else "Unknown prompt"
+
                     # Truncate problem text for readability in logs
                     problem_text_short = problem_text[:200] + "..." if len(problem_text) > 200 else problem_text
                     
                     # Write to log file immediately with flush to ensure real-time logging
+                    log_file.write(f"===== SAMPLE {total_steps}_{i} =====\n")
+                    log_file.write(f"PROBLEM ID: {problem_id}\n")
                     log_file.write(f"PROBLEM TEXT: {problem_text_short}\n")
                     log_file.write(f"FULL PROMPT: {prompt_text}\n")
                     log_file.write(f"GENERATED CODE:\n{generated_code}\n")
