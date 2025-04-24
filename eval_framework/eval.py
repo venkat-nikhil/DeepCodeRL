@@ -100,9 +100,9 @@ test_inputs  = [
     ['''n, m = map(int, input().split())\nmydiv = n // m\nmymod = n % m\nmylist = [ mydiv for _ in range(m) ]\nif  mymod == 0 :\n    out = ' '.join(str(i) for i in mylist)\nelse :\n    for i in mylist :\n        mylist[mylist.index(i)] += 1\n        mymod -= 1\n        if mymod == 0 :\n            out = ' '.join(str(i) for i in mylist)\n            break\nprint(out)\n''', 
      ["12 3", "15 4", "18 7"],
      ["4 4 4", "3 4 4 4", "2 2 2 3 3 3 3"]],
-    ['''n, m = map(int, input().split())\nmydiv = n // m\nmymod = n % m\nmylist = [ mydiv for _ in range(m) ]\nif  mymod == 0 :\n    out = ' '.join(str(i) for i in mylist)\nelse :\n    for i in mylist :\n        mylist[mylist.index(i)] += 1\n        mymod -= 1\n        if mymod == 0 :\n            out = ' '.join(str(i) for i in mylist)\n            break\nprint(out)\n''', 
+    ["", 
      [],
-     []]
+     []],
 ]
 
 class MultiProcessorEvaluator:
@@ -133,7 +133,7 @@ class MultiProcessorEvaluator:
         results = []
         command = self.command_prefix
         if code_with_tests[0] is None or code_with_tests[0] == "":
-            return [False, "Code is empty."]
+            return [[False, "Code is empty."]]
         command.append(code_with_tests[0])
         input_tests = code_with_tests[1]
         expected_output_tests = code_with_tests[2]

@@ -434,9 +434,12 @@ def train_rl(args):
                 # Calculate rewards for the generated code
                 rewards = []
                 
-                # Open log file for current epoch to save generated code
+                # Open log file for current epoch to save generated code, create it if not there
                 log_filename = f"logs/model-output-epoch-{epoch+1}.txt"
+                if not os.path.isfile(log_filename):
+                    os.makedirs(os.path.dirname(log_filename), exist_ok=True)
                 log_file = open(log_filename, "a", encoding="utf-8")
+                logger.info(f"Opening log file {log_filename}")
                 
                 # Calculate avg gen sequence length for logging
                 avg_seq_length = 0
@@ -478,7 +481,7 @@ def train_rl(args):
                     log_file.write(f"EVAL OUTPUT:\n{json.dumps(eval_outputs, indent=2)}\n")
                     log_file.write(f"REWARD: {reward}\n")
                     
-                    # log_file.flush()  # Ensure immediate write to disk
+                    log_file.flush()  # Ensure immediate write to disk
                 
                 if len(generated_sequences) > 0:
                     avg_seq_length /= len(generated_sequences)
