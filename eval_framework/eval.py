@@ -165,7 +165,7 @@ class MultiProcessorEvaluator:
             for input_data in inputs:
                 if termination_requested:
                     break
-                futures.append(executor.submit(self._run_test, input_data))
+                futures.append(executor.submit(self._worker, input_data))
                 
             for future in concurrent.futures.as_completed(futures):
                 if termination_requested and not future.done():
