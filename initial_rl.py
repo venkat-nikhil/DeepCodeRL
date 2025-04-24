@@ -93,22 +93,47 @@ class RLCodeDataset(Dataset):
         """
         item = self.data[idx]
 
-        system_prompt = """You will be given a competitive programming problem.
-            Analyze the maximum input constraints and identify the optimal algorithmic approach and data structures needed to process the largest possible test cases within the time and memory limits, then explain why your chosen implementation strategy is the most efficient solution. Please reason step by step about your solution approach, then provide a complete implementation in Python 3 that is thoroughly optimized for both speed and memory usage.
+        system_prompt = """You are a competitive programming expert assistant. Given a programming problem:
 
-            Your solution must read input from standard input (input()), write output to standard output (print()).
-            Do not include any debug prints or additional output.
+1. IMPLEMENTATION:
+   - Write clean, efficient Python 3 code following competitive programming best practices
+   - Use appropriate data structures (heaps, trees, hash tables, etc.) justified by the constraints
+   - Apply Python-specific optimizations when necessary 
+   - Include brief inline comments for complex logic
+   - Avoid unnecessary imports or debugging code
+   - Contains no explanations, comments or debug prints
 
-            Put your final solution within a single code block:
-            ```python
-            <your code here>
-            ```"""
+2. INPUT/OUTPUT HANDLING:
+   - Read input precisely according to the problem description
+   - For most problems, the first integer represents the number of subsequent inputs. In those cases, first read this integer, then use it to determine how many more inputs to process
+   - For integer inputs, use appropriate integer reading methods
+   - For string inputs, use use appropriate string reading methods
+   - For multiple test cases, handle the specified format correctly
+   - Output results exactly as required by the problem
+
+3. FINAL VERIFICATION:
+   - Mentally trace through your code with the sample inputs
+   - Check for common errors: off-by-one issues, integer overflow, etc.
+   - Verify your solution works for edge cases (empty input, maximum constraints)
+
+Format your response as follows:
+
+```python
+# Define other functions only if necessary
+def main():
+    # Your optimized implementation here
+    # Handle all input/output as specified
+    
+if __name__ == "__main__":
+    main()
+```
+"""
         
         # Get problem description with prefix
         problem_text = system_prompt + self.problem_prefix + item["problem"]
         
         # Get the full prompt for generation
-        full_prompt = problem_text + self.solution_prefix
+        full_prompt = problem_text
         
         # Tokenize the prompt
         encodings = self.tokenizer(
@@ -295,6 +320,7 @@ def train_rl(args):
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
+        pin_memory=True,
         collate_fn=custom_collate_fn
     )
     
@@ -369,13 +395,16 @@ def train_rl(args):
                     do_sample=True,
                     top_p=0.95,
                     top_k=50,  # Add top_k to prevent extreme probabilities
-                    temperature=0.8,  # Slightly higher temperature for more stable sampling
+                    temperature=0.6,  # Slightly higher temperature for more stable sampling
                     return_dict_in_generate=True,
                     output_scores=True,
                     min_length=5,  # Set minimum length to avoid empty generations
                     bad_words_ids=None,
                     num_return_sequences=1,  # Ensure we get exactly one sequence per input
-                    repetition_penalty=1.1
+                    repetition_penalty=1.1,
+                    pad_token_id=tokenizer.pad_token_id,  # Ensure this is set
+                    eos_token_id=tokenizer.eos_token_id,  # Ensure this is set
+                    use_cache=True 
                 )
                 
                 generated_sequences = outputs.sequences
