@@ -16,6 +16,7 @@ from tqdm import tqdm
 from typing import Dict, List, Optional, Tuple, Union
 from eval_framework.eval import *
 from parser import scrape_and_run_code
+import wandb
 
 # Set up logging
 logging.basicConfig(
@@ -286,7 +287,6 @@ def train_rl(args):
     model = AutoModelForCausalLM.from_pretrained(
         args.sft_model_path if args.sft_model_path else args.model_name,
         **model_kwargs,
-        
     )
     
     # Ensure all parameters are trainable
@@ -330,6 +330,21 @@ def train_rl(args):
         weight_decay=weight_decay,
     )
     
+    # Ensure wandb
+    if hasattr(args, 'use_wandb') and args.use_wandb:
+        wandb_project = getattr(args, 'wandb_project', 'rl-code-generation')
+        wandb_run_name = getattr(args, 'wandb_run_name', f'run-{args.seed}')
+        wandb_tags = getattr(args, 'wandb_tags', [])
+        
+        # Initialize wandb
+        wandb.init(
+            project=wandb_project,
+            name=wandb_run_name,
+            config=vars(args),
+            tags=wandb_tags
+        )
+        logger.info(f"Initialized wandb with project: {wandb_project}, run: {wandb_run_name}")
+
     # Ensure logs directory exists
     os.makedirs("logs", exist_ok=True)
     
@@ -394,10 +409,15 @@ def train_rl(args):
                 log_filename = f"logs/model-output-epoch-{epoch+1}.txt"
                 log_file = open(log_filename, "a", encoding="utf-8")
                 
+                # Calculate avg gen sequence length for logging
+                avg_seq_length = 0
+
                 for i, sequence in enumerate(generated_sequences):
                     # Find where the input ends
                     batch_idx = i % input_ids.size(0)
                     input_length = input_ids[batch_idx].size(0)
+                    gen_length = len(sequence) - input_length
+                    avg_seq_length += gen_length
                     
                     # Get only the newly generated part
                     generated_tokens = sequence[input_length:]
@@ -426,14 +446,42 @@ def train_rl(args):
                     log_file.write(f"FULL PROMPT: {prompt_text}\n")
                     log_file.write(f"GENERATED CODE:\n{generated_code}\n")
                     log_file.write(f"REWARD: {reward}\n")
-                    log_file.write("="*50 + "\n\n")
-                    log_file.flush()  # Ensure immediate write to disk
+                    
+                    # log_file.flush()  # Ensure immediate write to disk
                 
-                # Close log file
-                log_file.close()
+                if len(generated_sequences) > 0:
+                    avg_seq_length /= len(generated_sequences)
                 
+                logger.info(f"Average generated sequence length: {avg_seq_length:.2f} tokens")
+
                 # Convert rewards to tensor
                 rewards = torch.tensor(rewards, device=model.device)
+
+                metrics = {
+                    'train/reward': rewards.mean().item(),
+                    'train/avg_sequence_length': avg_seq_length,
+                    'train/step': total_steps,
+                    'train/epoch': epoch
+                }
+
+                if rewards.numel() > 0:
+                    metrics.update({
+                        'train/reward_std': rewards.std().item() if rewards.numel() > 1 else 0.0,
+                        'train/reward_min': rewards.min().item() if rewards.numel() > 0 else 0.0,
+                        'train/reward_max': rewards.max().item() if rewards.numel() > 0 else 0.0,
+                    })
+                    
+                    # Optional: Create histogram for rewards
+                    # if rewards.numel() > 5:  # Only create histogram if we have enough data points
+                    #     wandb.log({"train/reward_histogram": wandb.Histogram(rewards.cpu().numpy())}, step=total_steps)
+                
+                    # Log the prepared metrics
+                    wandb.log(metrics, step=total_steps)
+
+                log_file.write("="*50 + "\n\n")
+                log_file.flush()
+                # Close log file
+                log_file.close()
             
             # STEP 2: Compute REINFORCE loss
             loss = torch.tensor(0.0, device=model.device, requires_grad=True)
@@ -570,6 +618,10 @@ def train_rl(args):
                 logger.info(f"Saved interrupted checkpoint to {checkpoint_path}")
                 return model
     
+    # After training, close wandb
+    if hasattr(args, 'use_wandb') and args.use_wandb:
+        wandb.finish()
+
     # Save final model
     final_model_path = os.path.join(args.rl_output_dir, "final_model")
     os.makedirs(final_model_path, exist_ok=True)
