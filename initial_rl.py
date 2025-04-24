@@ -176,7 +176,7 @@ def custom_collate_fn(batch):
     
     return result
 
-def calculate_reward(generated_code: str, examples) -> float:
+def calculate_reward(generated_code: str, examples):
     """
     Calculate reward for the generated code.
     
@@ -209,11 +209,13 @@ def calculate_reward(generated_code: str, examples) -> float:
             
         if not valid_examples:
             logger.warning("No valid examples found for reward calculation")
-            return 0.0
+            return 0.0, [[]], [[[]]]
             
         test_inputs = []
         test_input = scrape_and_run_code(text=generated_code, examples=valid_examples)
         test_inputs.append(test_input)
+
+        #print(f"PARSER OUTPUT:\n{parser_outputs}\n")
         
         tester = MultiProcessorEvaluator(
             command_prefix=['python','-c'],
@@ -221,10 +223,13 @@ def calculate_reward(generated_code: str, examples) -> float:
             timeout=2.0
         )
         results = tester.run(test_inputs)
+
+                            
+        #print(f"EVAL OUTPUT:\n{json.dumps(eval_outputs, indent=2)}\n")
         
         # Process results directly instead of using get_batch_run_scores
         if not results:
-            return 0.0
+            return 0.0, [[]], [[[]]]
             
         # Handle different possible result formats
         score = tester.get_batch_run_scores(results)
@@ -232,7 +237,7 @@ def calculate_reward(generated_code: str, examples) -> float:
         return max(0.0, float(score[0])), test_inputs, results
     except Exception as e:
         logger.warning(f"Error in calculate_reward: {e}")
-        return 0.0
+        return 0.0, [[]], [[[]]]
 
 
 def train_rl(args):
@@ -511,12 +516,12 @@ def train_rl(args):
             
             # STEP 2: Compute REINFORCE loss
             loss = torch.tensor(0.0, device=model.device, requires_grad=True)
-            valid_sequences = 0
+            valid_sequences = 1
             
             for i, sequence in enumerate(generated_sequences):
                 # Skip sequences with zero reward or too small reward (no learning signal)
                 # Higher threshold for FP16 to avoid numerical instability
-                min_reward_threshold = 0.01 if torch_dtype == torch.float16 else 0.0
+                min_reward_threshold = 2 if torch_dtype == torch.float16 else 0.0
                 if rewards[i] <= min_reward_threshold:
                     continue
                 
