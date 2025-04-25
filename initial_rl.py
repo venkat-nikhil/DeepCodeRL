@@ -247,7 +247,7 @@ def print_trainable_parameters(model):
     trainable_params = 0
     all_params = 0
     for _, param in model.named_parameters():
-        logger.info(f"Parameter: {param.shape} - requires_grad: {param.requires_grad}")
+        # logger.info(f"Parameter: {param.shape} - requires_grad: {param.requires_grad}")
         all_params += param.numel()
         if param.requires_grad:
             trainable_params += param.numel()
@@ -445,7 +445,7 @@ def train_rl(args):
         progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{num_epochs}")
         
         # Open log file for current epoch to save generated code, create it if not there
-        log_filename = f"logs/model-output-epoch-{epoch+1}.txt"
+        log_filename = f"logs/original-model-output-epoch-{epoch+1}.txt"
         if not os.path.isfile(log_filename):
             os.makedirs(os.path.dirname(log_filename), exist_ok=True)
         log_file = open(log_filename, "a", encoding="utf-8")
@@ -573,13 +573,14 @@ def train_rl(args):
                 log_file.flush()
             
             # STEP 2: Compute REINFORCE loss
+            log_file.write("Step 2: Computing REINDFORCE Loss")
             loss = torch.tensor(0.0, device=model.device, requires_grad=True)
-            valid_sequences = 1
+            valid_sequences = 0
             
             for i, sequence in enumerate(generated_sequences):
                 # Skip sequences with zero reward or too small reward (no learning signal)
                 # Higher threshold for FP16 to avoid numerical instability
-                min_reward_threshold = 2 if torch_dtype == torch.float16 else 0.0
+                min_reward_threshold = 0.01 if torch_dtype == torch.float16 else 0.0
                 if rewards[i] <= min_reward_threshold:
                     continue
                 
@@ -642,6 +643,9 @@ def train_rl(args):
                 # (Negative because we're doing gradient descent but want to maximize reward)
                 sequence_loss = -seq_log_prob * reward_tensor
                 loss = loss + sequence_loss
+
+            log_file.write(f"Sequence Log Probs and Logits Computed\n\n")
+            log_file.flush()
             
             # Normalize loss by the number of valid sequences
             if valid_sequences > 0:
@@ -652,12 +656,16 @@ def train_rl(args):
                 
                 # Backpropagation - make sure loss requires grad
                 loss.backward()
+                log_file.write(f"BackProp Done\n\n")
+                log_file.flush()
                 
                 # Gradient clipping to prevent exploding gradients
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                 
                 # Optimization step
                 optimizer.step()
+                log_file.write(f"Gradients Updates the trainable parameters\n\n")
+                log_file.flush()
                 
                 # Track metrics
                 epoch_loss += loss.item()
