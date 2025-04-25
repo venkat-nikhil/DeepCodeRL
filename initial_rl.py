@@ -247,6 +247,7 @@ def print_trainable_parameters(model):
     trainable_params = 0
     all_params = 0
     for _, param in model.named_parameters():
+        logger.info(f"Parameter: {param.shape} - requires_grad: {param.requires_grad}")
         all_params += param.numel()
         if param.requires_grad:
             trainable_params += param.numel()
@@ -320,7 +321,7 @@ def train_rl(args):
         model = PeftModel.from_pretrained(
             base_model, 
             args.sft_model_path,  # Path to your LoRA checkpoint
-            is_trainable=False,   # Temporarily set to False
+            is_trainable=True,   # Temporarily set to False
         )
 
     else:
@@ -390,9 +391,13 @@ def train_rl(args):
     logger.info("Starting RL training phase with reduced context...")
     model.train()
 
-    # Ensure all parameters are trainable
-    for param in model.parameters():
-        if param.requires_grad:
+    # Ensure trainable parameters
+    if hasattr(args, 'use_lora') and args.use_lora:
+        for param in model.parameters():
+            if param.requires_grad:
+                param.requires_grad = True
+    else:
+        for param in model.parameters():
             param.requires_grad = True
     
     # Print all the trainable parameters in the model
@@ -541,8 +546,6 @@ def train_rl(args):
 
                 log_file.write("="*50 + "\n\n")
                 log_file.flush()
-                # Close log file
-                log_file.close()
             
             # STEP 2: Compute REINFORCE loss
             loss = torch.tensor(0.0, device=model.device, requires_grad=True)
@@ -654,6 +657,9 @@ def train_rl(args):
                 model.save_pretrained(checkpoint_path)
                 tokenizer.save_pretrained(checkpoint_path)
                 logger.info(f"Saved checkpoint to {checkpoint_path}")
+
+        # Close log file
+        log_file.close()
         
         # End of epoch logging
         avg_epoch_loss = epoch_loss / max(num_batches, 1)
