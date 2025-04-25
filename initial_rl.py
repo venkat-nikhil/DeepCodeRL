@@ -449,14 +449,15 @@ def train_rl(args):
         progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{num_epochs}")
         
         # Open log file for current epoch to save generated code, create it if not there
-        log_filename = f"logs/original-model-output-epoch-{epoch+1}.txt"
+        log_filename = f"logs/original-model-output-epoch-{batch_size}-{epoch+1}.txt"
         if not os.path.isfile(log_filename):
             os.makedirs(os.path.dirname(log_filename), exist_ok=True)
         log_file = open(log_filename, "a", encoding="utf-8")
         logger.info(f"Opening log file {log_filename}")
 
         for batch in progress_bar:
-            
+            torch.cuda.empty_cache()
+
             if termination_requested:
                 logger.info("Training interrupted. Saving checkpoint...")
                 save_checkpoint(model, tokenizer, args.rl_output_dir)
@@ -605,12 +606,12 @@ def train_rl(args):
                 model_input = sequence[:-1].unsqueeze(0)
                 
                 # Forward pass to get logits
-                outputs = model(
+                outputs_forward = model(
                     input_ids=model_input,
                     return_dict=True
                 )
                 
-                logits = outputs.logits
+                logits = outputs_forward.logits
                 
                 # Get logits for the generated part (shifted to align)
                 logits_for_generated = logits[:, input_length-1:-1]
@@ -652,6 +653,9 @@ def train_rl(args):
                 # (Negative because we're doing gradient descent but want to maximize reward)
                 sequence_loss = -seq_log_prob * reward_tensor
                 loss = loss + sequence_loss
+
+            del generated_sequences, outputs
+            torch.cuda.empty_cache()
 
             log_file.write(f"Sequence Log Probs and Logits Computed\n\n")
             log_file.write(f"Current GPU MEMORY: {print_gpu_memory()} GB\n")
@@ -704,6 +708,8 @@ def train_rl(args):
                 model.save_pretrained(checkpoint_path)
                 tokenizer.save_pretrained(checkpoint_path)
                 logger.info(f"Saved checkpoint to {checkpoint_path}")
+            
+            torch.cuda.empty_cache()
 
         # Close log file
         log_file.close()
