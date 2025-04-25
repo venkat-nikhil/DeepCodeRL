@@ -317,12 +317,37 @@ def train_rl(args):
             **model_kwargs,
         )
 
-        # Load existing LoRA weights from SFT
-        model = PeftModel.from_pretrained(
-            base_model, 
-            args.sft_model_path,  # Path to your LoRA checkpoint
-            is_trainable=True,   # Temporarily set to False
-        )
+        if args.sft_model_path is not None:
+            # Load existing LoRA weights from SFT
+            model = PeftModel.from_pretrained(
+                base_model, 
+                args.sft_model_path,  # Path to your LoRA checkpoint
+                is_trainable=True,
+            )
+        else:
+            # Create a new LoRA model if no SFT checkpoint is provided
+            logger.info(f"Creating new LoRA model based on {args.model_name}")
+            
+            # Define LoRA configuration
+            lora_config = LoraConfig(
+                r=8,  # Rank of the update matrices
+                lora_alpha=32,  # Alpha parameter for LoRA scaling
+                target_modules=[  # Which modules to apply LoRA to
+                    "q_proj", 
+                    "k_proj", 
+                    "v_proj", 
+                    "o_proj",
+                    "gate_proj",
+                    "up_proj", 
+                    "down_proj"
+                ],
+                lora_dropout=0.05,  # Dropout probability for LoRA layers
+                bias="none",  # Whether to train bias parameters
+                task_type=TaskType.CAUSAL_LM  # Type of task
+            )
+            
+            # Apply LoRA to the model
+            model = get_peft_model(base_model, lora_config)
 
     else:
         # Load model from SFT phase or pretrained model

@@ -251,7 +251,7 @@ def main():
     if run_initial_rl:
         # Verify we have an SFT model path
         if sft_model_path is None:
-            logger.error("No SFT model path provided. Cannot run Initial RL phase.")
+            logger.info("No SFT model path provided. Cannot run Initial RL phase.")
             return
         
         run_initial_rl_phase(args, sft_model_path)
