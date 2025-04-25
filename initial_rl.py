@@ -329,14 +329,6 @@ def train_rl(args):
             args.sft_model_path if args.sft_model_path else args.model_name,
             **model_kwargs,
         )
-    
-    # Ensure all parameters are trainable
-    for param in model.parameters():
-        if param.requires_grad:
-            param.requires_grad = True
-    
-    # Print all the trainable parameters in the model
-    print_trainable_parameters(model)
 
     # Enable gradient checkpointing for memory efficiency if specified
     if hasattr(args, 'gradient_checkpointing') and args.gradient_checkpointing:
@@ -397,6 +389,14 @@ def train_rl(args):
     # Training loop
     logger.info("Starting RL training phase with reduced context...")
     model.train()
+
+    # Ensure all parameters are trainable
+    for param in model.parameters():
+        if param.requires_grad:
+            param.requires_grad = True
+    
+    # Print all the trainable parameters in the model
+    print_trainable_parameters(model)
     
     total_steps = 0
     best_reward = 0.0
@@ -405,7 +405,7 @@ def train_rl(args):
     num_epochs = int(args.num_epochs) if hasattr(args, 'num_epochs') else 3
     max_new_tokens = args.max_new_tokens if hasattr(args, 'max_new_tokens') else 512
     
-    logger.info(f"Training for {num_epochs} epochs with learning rate {learning_rate}")
+    logger.info(f"Training for {num_epochs} epochs with learning rate {learning_rate} and max new tokens {max_new_tokens}")
     
     for epoch in range(num_epochs):
         epoch_loss = 0.0
@@ -414,6 +414,13 @@ def train_rl(args):
         
         progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{num_epochs}")
         
+        # Open log file for current epoch to save generated code, create it if not there
+        log_filename = f"logs/model-output-epoch-{epoch+1}.txt"
+        if not os.path.isfile(log_filename):
+            os.makedirs(os.path.dirname(log_filename), exist_ok=True)
+        log_file = open(log_filename, "a", encoding="utf-8")
+        logger.info(f"Opening log file {log_filename}")
+
         for batch in progress_bar:
             
             if termination_requested:
@@ -428,13 +435,6 @@ def train_rl(args):
             batch_examples = batch["examples"]
             
             repetition_penalty = 1.1 if max_new_tokens == 16384 else 1.0
-
-            # Open log file for current epoch to save generated code, create it if not there
-            log_filename = f"logs/model-output-epoch-{epoch+1}.txt"
-            if not os.path.isfile(log_filename):
-                os.makedirs(os.path.dirname(log_filename), exist_ok=True)
-            log_file = open(log_filename, "a", encoding="utf-8")
-            logger.info(f"Opening log file {log_filename}")
 
             # STEP 1: Generate code using the current model
             with torch.no_grad():
