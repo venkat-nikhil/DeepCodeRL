@@ -257,6 +257,10 @@ def print_trainable_parameters(model):
         f"trainable%: {100 * trainable_params / all_params:.2f}%"
     )
     
+def print_gpu_memory():
+    if torch.cuda.is_available():
+        print(f"GPU Memory: Allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB, "
+              f"Cached: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
 
 def train_rl(args):
     """
@@ -431,7 +435,7 @@ def train_rl(args):
     total_steps = 0
     best_reward = 0.0
     max_grad_norm = args.max_grad_norm if hasattr(args, 'max_grad_norm') else 1.0
-    save_steps = getattr(args, 'save_steps', 200)
+    save_steps = getattr(args, 'save_steps', 1)
     num_epochs = int(args.num_epochs) if hasattr(args, 'num_epochs') else 3
     max_new_tokens = args.max_new_tokens if hasattr(args, 'max_new_tokens') else 512
     
@@ -470,6 +474,8 @@ def train_rl(args):
             with torch.no_grad():
                 start_time = time.time()
                 log_file.write(f"Starting generation with max_new_tokens={max_new_tokens}, temp={0.6}")
+                log_file.write(f"Current GPU MEMORY: {print_gpu_memory()} GB\n")
+                log_file.flush()
                 # Generate code completions with safer parameters for FP16
                 outputs = model.generate(
                     input_ids=input_ids,
@@ -537,6 +543,7 @@ def train_rl(args):
                     log_file.write(f"PARSER OUTPUT:\n{parser_outputs}\n")
                     log_file.write(f"EVAL OUTPUT:\n{json.dumps(eval_outputs, indent=2)}\n")
                     log_file.write(f"REWARD: {reward}\n")
+                    log_file.write(f"Current GPU MEMORY: {print_gpu_memory()} GB\n")
                     
                     log_file.flush()  # Ensure immediate write to disk
                 
@@ -544,6 +551,8 @@ def train_rl(args):
                     avg_seq_length /= len(generated_sequences)
                 
                 logger.info(f"Average generated sequence length: {avg_seq_length:.2f} tokens")
+                log_file.write(f"Average generated sequence length: {avg_seq_length:.2f} tokens\n")
+                log_file.flush()
 
                 # Convert rewards to tensor
                 rewards = torch.tensor(rewards, device=model.device)
@@ -645,6 +654,7 @@ def train_rl(args):
                 loss = loss + sequence_loss
 
             log_file.write(f"Sequence Log Probs and Logits Computed\n\n")
+            log_file.write(f"Current GPU MEMORY: {print_gpu_memory()} GB\n")
             log_file.flush()
             
             # Normalize loss by the number of valid sequences
@@ -657,6 +667,7 @@ def train_rl(args):
                 # Backpropagation - make sure loss requires grad
                 loss.backward()
                 log_file.write(f"BackProp Done\n\n")
+                log_file.write(f"Current GPU MEMORY: {print_gpu_memory()} GB\n")
                 log_file.flush()
                 
                 # Gradient clipping to prevent exploding gradients
@@ -665,6 +676,7 @@ def train_rl(args):
                 # Optimization step
                 optimizer.step()
                 log_file.write(f"Gradients Updates the trainable parameters\n\n")
+                log_file.write(f"Current GPU MEMORY: {print_gpu_memory()} GB\n")
                 log_file.flush()
                 
                 # Track metrics
@@ -673,6 +685,8 @@ def train_rl(args):
                 num_batches += 1
             else:
                 logger.warning("No valid sequences in batch - skipping update")
+                log_file.write("No valid sequences in batch - skipping update\n")
+                log_file.flush()
             
             # Update progress bar
             total_steps += 1
@@ -684,7 +698,7 @@ def train_rl(args):
             })
             
             # Periodically save checkpoint
-            if total_steps % save_steps == 0:
+            if total_steps % save_steps == 0 and valid_sequences > 0:
                 checkpoint_path = os.path.join(args.rl_output_dir, f"checkpoint-{total_steps}")
                 os.makedirs(checkpoint_path, exist_ok=True)
                 model.save_pretrained(checkpoint_path)
