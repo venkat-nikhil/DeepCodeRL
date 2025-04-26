@@ -500,7 +500,7 @@ def train_rl(args):
                 log_file.write(f"Generation completed in {total_time:.2f} seconds\n")
                 log_file.flush()
                 
-                generated_sequences = outputs.sequences
+                generated_sequences = outputs.sequences.detach().cpu()
                 
                 # Calculate rewards for the generated code
                 rewards = []
@@ -590,21 +590,25 @@ def train_rl(args):
             for i, sequence in enumerate(generated_sequences):
                 # Skip sequences with zero reward or too small reward (no learning signal)
                 # Higher threshold for FP16 to avoid numerical instability
-                min_reward_threshold = 0.01 if torch_dtype == torch.float16 else 0.0
-                if rewards[i] <= min_reward_threshold:
-                    continue
+                # min_reward_threshold = 0.01 if torch_dtype == torch.float16 else 0.0
+                # if rewards[i] <= min_reward_threshold:
+                #     continue
                 
                 valid_sequences += 1
                 
                 # Get input length
                 input_length = input_ids[i % input_ids.size(0)].size(0)
                 
+                sequence = sequence.to(model.device)
+
                 # Get only the generated tokens
                 generated_part = sequence[input_length:].unsqueeze(0)
                 
                 # Prepare input for forward pass: all tokens except the last one
                 model_input = sequence[:-1].unsqueeze(0)
                 
+                sequence = sequence.cpu()
+
                 # Forward pass to get logits
                 outputs_forward = model(
                     input_ids=model_input,
